@@ -1,10 +1,10 @@
 """Preprocess crystal structures: relax, compute e-above-hull, and Niggli-reduce.
 
 For each AI-generated model in input/gen/raw/<model>.pkl.gz, this script:
-  1. Relaxes structures with MACE-MP and saves Niggli-reduced relaxed structures.
+  1. Relaxes structures with MACE-MP and saves raw relaxed structures.
   2. Saves per-structure relaxation infos (energies, convergence).
   3. Computes e-above-hull for unrelaxed (MACE initial energy) and relaxed structures.
-  4. Niggli-reduces the raw unrelaxed structures.
+  4. Niggli-reduces the relaxed structures.
 
 For the training set in input/train/raw/train.csv, Niggli reduction is applied.
 
@@ -13,9 +13,9 @@ Sources:
     input/train/raw/train.csv           -> CSV with "cif" column
 
 Outputs:
-    input/gen/preprocessed/<model>.pkl.gz                   -> Niggli-reduced unrelaxed
-    input/gen/preprocessed/<model>_relaxed.pkl.gz           -> Niggli-reduced relaxed
-    input/gen/preprocessed/<model>_relax_infos.pkl.gz        -> relaxation infos
+    input/gen/preprocessed/<model>_relaxed.pkl.gz           -> raw relaxed
+    input/gen/preprocessed/<model>_relaxed_niggli.pkl.gz    -> Niggli-reduced relaxed
+    input/gen/preprocessed/<model>_relax_infos.pkl.gz       -> relaxation infos
     input/gen/preprocessed/<model>_ehull_unrelaxed.pkl.gz   -> list[float] e-above-hull
     input/gen/preprocessed/<model>_ehull_relaxed.pkl.gz     -> list[float] e-above-hull
     input/train/preprocessed/train.pkl.gz                   -> list[Structure] (pickle)
@@ -37,17 +37,17 @@ from pymatgen.analysis.phase_diagram import PatchedPhaseDiagram
 from pymatgen.core import Structure
 from tqdm import tqdm
 
+from src.config import INPUT_DIR
 from src.energy import build_phase_diagram, compute_ehulls, relax_structures
 
 load_dotenv()
 MP_API_KEY: str = os.environ["MP_API_KEY"]
 
-ROOT = Path(__file__).resolve().parent.parent
-GEN_RAW_DIR = ROOT / "input" / "gen" / "raw"
-GEN_OUT_DIR = ROOT / "input" / "gen" / "preprocessed"
-TRAIN_RAW = ROOT / "input" / "train" / "raw" / "train.csv"
-TRAIN_OUT = ROOT / "input" / "train" / "preprocessed" / "train.pkl.gz"
-PPD_CACHE = ROOT / "input" / "ppd_cache.pkl.gz"
+GEN_RAW_DIR = INPUT_DIR / "gen" / "raw"
+GEN_OUT_DIR = INPUT_DIR / "gen" / "preprocessed"
+TRAIN_RAW = INPUT_DIR / "train" / "raw" / "train.csv"
+TRAIN_OUT = INPUT_DIR / "train" / "preprocessed" / "train.pkl.gz"
+PPD_CACHE = INPUT_DIR / "ppd_cache.pkl.gz"
 
 
 def _reduce(s: Structure) -> Structure:
@@ -69,18 +69,21 @@ def _stem(path: Path) -> str:
 
 
 def _get_ppd() -> PatchedPhaseDiagram:
+    if PPD_CACHE.exists():
+        return _load(PPD_CACHE)
     with MPRester(MP_API_KEY) as mpr:
         return build_phase_diagram(mpr, cache_path=PPD_CACHE)
 
 
 def preprocess_gen() -> None:
+    GEN_OUT_DIR.mkdir(parents=True, exist_ok=True)
     ppd: PatchedPhaseDiagram | None = None
 
     for src in sorted(GEN_RAW_DIR.glob("*.pkl.gz")):
         stem = _stem(src)
 
-        dst_niggli = GEN_OUT_DIR / src.name
         dst_relaxed = GEN_OUT_DIR / f"{stem}_relaxed.pkl.gz"
+        dst_relaxed_niggli = GEN_OUT_DIR / f"{stem}_relaxed_niggli.pkl.gz"
         dst_infos = GEN_OUT_DIR / f"{stem}_relax_infos.pkl.gz"
         dst_ehull_u = GEN_OUT_DIR / f"{stem}_ehull_unrelaxed.pkl.gz"
         dst_ehull_r = GEN_OUT_DIR / f"{stem}_ehull_relaxed.pkl.gz"
@@ -96,18 +99,15 @@ def preprocess_gen() -> None:
         else:
             print(f"{stem}: relaxing {len(structures)} structures")
             relaxed, infos = relax_structures(structures)
-            niggli_relaxed = [
-                _reduce(s) for s in tqdm(relaxed, desc=f"{stem} niggli (relaxed)")
-            ]
-            _save(niggli_relaxed, dst_relaxed)
+            _save(relaxed, dst_relaxed)
             _save(infos, dst_infos)
             print(f"{stem}: relaxed -> {dst_relaxed}")
 
         # Step 2: E-above-hull
         if not dst_ehull_u.exists() or not dst_ehull_r.exists():
             if relaxed is None:
-                print(f"{stem}: loading relaxed/infos for e-hull")
                 relaxed = _load(dst_relaxed)
+            if infos is None:
                 infos = _load(dst_infos)
             assert relaxed is not None and infos is not None
 
@@ -140,15 +140,17 @@ def preprocess_gen() -> None:
         else:
             print(f"{stem}: ehull already done, skipping")
 
-        # Step 3: Niggli-reduce unrelaxed
-        if dst_niggli.exists():
-            print(f"{stem}: niggli (unrelaxed) already done, skipping")
+        # Step 3: Niggli-reduce relaxed
+        if dst_relaxed_niggli.exists():
+            print(f"{stem}: niggli (relaxed) already done, skipping")
         else:
-            reduced = [
-                _reduce(s) for s in tqdm(structures, desc=f"{stem} niggli (unrelaxed)")
+            if relaxed is None:
+                relaxed = _load(dst_relaxed)
+            niggli_relaxed = [
+                _reduce(s) for s in tqdm(relaxed, desc=f"{stem} niggli (relaxed)")
             ]
-            _save(reduced, dst_niggli)
-            print(f"{stem}: niggli (unrelaxed) -> {dst_niggli}")
+            _save(niggli_relaxed, dst_relaxed_niggli)
+            print(f"{stem}: niggli (relaxed) -> {dst_relaxed_niggli}")
 
 
 def preprocess_train() -> None:
@@ -163,6 +165,7 @@ def preprocess_train() -> None:
         for cif in tqdm(df["cif"], desc="train")
     ]
 
+    TRAIN_OUT.parent.mkdir(parents=True, exist_ok=True)
     _save(reduced, TRAIN_OUT)
     print(f"train: {len(reduced)} structures -> {TRAIN_OUT}")
 
