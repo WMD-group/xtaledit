@@ -99,7 +99,8 @@ def _gpu_worker(
         List of ``(relaxed_structure, info_dict)`` pairs, one per input structure.
     """
     structures, device, fmax, max_steps = args
-    base_calc = mace_mp(model="medium-mpa-0", default_dtype="float64", device=device)
+    model_path = str(Path.home() / ".cache" / "mace" / "macemp0mediummodel")
+    base_calc = mace_mp(model=model_path, default_dtype="float64", device=device)
     results = [
         _relax_one(s, base_calc, fmax, max_steps)
         for s in tqdm(structures, desc=device, position=0, leave=True)
