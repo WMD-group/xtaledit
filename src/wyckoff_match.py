@@ -22,7 +22,7 @@ from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
 from scipy.optimize import linear_sum_assignment
 from tqdm import tqdm
 
-from .mod_petti import MOD_PETTI
+from ._subst_cost import subst_cost_mod_petti, subst_cost_uniform
 
 
 @dataclass
@@ -74,12 +74,13 @@ class WyckoffMatch:
     Attributes:
         idx1: Index of the matched structure in the first input list.
         idx2: Index of the matched structure in the second input list.
-        cost: Atom-fraction-weighted element-substitution cost summed over all
-            orbit pairs.  Each orbit's contribution is scaled by
-            ``orbit_size / total_atoms_in_struct1``.  With the ``"uniform"``
-            policy this equals the fraction of atoms whose element differs;
-            with ``"mod_petti"`` it is the atom-fraction-weighted sum of
-            absolute modified-Pettifor-number differences.
+        cost_uniform: Atom-fraction-weighted uniform substitution cost (0 if
+            elements match, 1 if they differ), summed over all orbit pairs.
+            Each orbit's contribution is scaled by
+            ``orbit_size / total_atoms_in_struct1``.
+        cost_mod_petti: Same weighting as ``cost_uniform`` but using the
+            absolute difference of modified Pettifor numbers as the per-orbit
+            cost.
         atom_map: Integer array of shape ``(N,)`` (``N`` = number of atoms,
             equal for both structures).  ``atom_map[j]`` is the index in
             ``structs1[idx1]`` of the atom that atom *j* in ``structs2[idx2]``
@@ -96,7 +97,8 @@ class WyckoffMatch:
 
     idx1: int
     idx2: int
-    cost: float
+    cost_uniform: float
+    cost_mod_petti: float
     atom_map: np.ndarray
     repr1_idx: int
     repr2_idx: int
@@ -180,16 +182,18 @@ def _min_img_frac_dist(c1: np.ndarray, c2: np.ndarray) -> float:
     return float(np.linalg.norm(d))
 
 
-def _subst_cost_uniform(e1: str, e2: str) -> float:
-    return 0.0 if e1 == e2 else 1.0
-
-
-def _subst_cost_mod_petti(e1: str, e2: str) -> float:
-    p1 = MOD_PETTI.get(e1)
-    p2 = MOD_PETTI.get(e2)
-    if p1 is None or p2 is None:
-        return 102.0
-    return float(abs(p1 - p2))
+def _orbit_cost(
+    orbit_map: list[int],
+    elems1: list[str],
+    elems2: list[str],
+    orbit_sizes1: list[int],
+    cost_fn: Callable[[str, str], float],
+) -> float:
+    total = sum(orbit_sizes1)
+    return sum(
+        orbit_sizes1[k] / total * cost_fn(elems1[k], elems2[m])
+        for k, m in enumerate(orbit_map)
+    )
 
 
 def _match_orbits(
@@ -308,7 +312,7 @@ def match_wyckoff(
         (pre-computed or freshly computed).
     """
     cost_fn: Callable[[str, str], float] = (
-        _subst_cost_uniform if cost == "uniform" else _subst_cost_mod_petti
+        subst_cost_uniform if cost == "uniform" else subst_cost_mod_petti
     )
 
     data1_list: list[WyckoffData] = (
@@ -389,11 +393,25 @@ def match_wyckoff(
                 for r, c in zip(ri, ci):
                     atom_map[atoms2[c]] = atoms1[r]
 
+            elems2 = data2.orbit_elements
             results.append(
                 WyckoffMatch(
                     idx1=i,
                     idx2=j,
-                    cost=cost_val,
+                    cost_uniform=_orbit_cost(
+                        orbit_map,
+                        data1.orbit_elements,
+                        elems2,
+                        orbit_sizes1,
+                        subst_cost_uniform,
+                    ),
+                    cost_mod_petti=_orbit_cost(
+                        orbit_map,
+                        data1.orbit_elements,
+                        elems2,
+                        orbit_sizes1,
+                        subst_cost_mod_petti,
+                    ),
                     atom_map=atom_map,
                     repr1_idx=repr1_idx,
                     repr2_idx=repr2_idx,

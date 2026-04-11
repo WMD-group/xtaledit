@@ -98,7 +98,7 @@ def test_match_wyckoff_nacl_kbr_uniform_cost() -> None:
     assert len(matches) == 1
     m = matches[0]
     assert m.idx1 == 0 and m.idx2 == 0
-    assert m.cost == 1.0  # two orbits substituted, each weighted 4/8
+    assert m.cost_uniform == 1.0  # two orbits substituted, each weighted 4/8
     assert isinstance(m.atom_map, np.ndarray)
     assert m.atom_map.shape == (len(kbr),)
     # atom_map must be a valid permutation of struct1 indices
@@ -115,7 +115,8 @@ def test_match_wyckoff_nacl_kbr_mod_petti_cost() -> None:
     expected = 0.5 * abs(MOD_PETTI["Na"] - MOD_PETTI["K"]) + 0.5 * abs(  # type: ignore[operator]
         MOD_PETTI["Cl"] - MOD_PETTI["Br"]  # type: ignore[operator]
     )
-    assert m.cost == float(expected)
+    assert m.cost_mod_petti == float(expected)
+    assert m.cost_uniform == 1.0  # both orbits substituted
 
 
 def test_match_wyckoff_no_match_different_sg() -> None:
@@ -130,7 +131,7 @@ def test_match_wyckoff_self_match_zero_cost() -> None:
     matches, _, _ = match_wyckoff([nacl], [nacl], cost="uniform")
     assert len(matches) == 1
     m = matches[0]
-    assert m.cost == 0.0
+    assert m.cost_uniform == 0.0
     # Self-match: each struct2 atom maps back to the same-index struct1 atom.
     assert np.array_equal(m.atom_map, np.arange(len(nacl), dtype=np.int64))
 
@@ -166,6 +167,6 @@ def test_match_wyckoff_accepts_precomputed_data() -> None:
     assert len(matches_pre) == len(matches_raw)
     m_raw = matches_raw[0]
     m_pre = matches_pre[0]
-    assert m_pre.cost == m_raw.cost
+    assert m_pre.cost_uniform == m_raw.cost_uniform
     assert np.array_equal(m_pre.atom_map, m_raw.atom_map)
     assert isinstance(m_pre, WyckoffMatch)

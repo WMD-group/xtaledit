@@ -32,6 +32,8 @@ from pymatgen.core import Structure
 from pymatgen.core.structure_matcher import StructureMatcher
 from tqdm import tqdm
 
+from ._subst_cost import subst_cost_mod_petti, subst_cost_uniform
+
 
 @dataclass
 class AnonMatch:
@@ -74,6 +76,13 @@ class AnonMatch:
     mapping: np.ndarray  # (N_large,) int32
     translation: np.ndarray  # (3,) float
     rms: float
+    cost_uniform: float = float("nan")
+    cost_mod_petti: float = float("nan")
+
+    def __setstate__(self, state: dict) -> None:
+        state.setdefault("cost_uniform", float("nan"))
+        state.setdefault("cost_mod_petti", float("nan"))
+        self.__dict__.update(state)
 
 
 def _anonymize(struct: Structure) -> Structure:
@@ -83,12 +92,55 @@ def _anonymize(struct: Structure) -> Structure:
     return anon
 
 
+def _compute_atom_costs(
+    mapping: np.ndarray,
+    fu: int,
+    s1_supercell: bool,
+    species1: list[str],
+    species2: list[str],
+) -> tuple[float, float]:
+    """Compute per-atom-averaged substitution costs from an anonymous match mapping.
+
+    Args:
+        mapping: Integer array of length ``N_large`` as returned by
+            :func:`_match_pair`.
+        fu: Supercell factor stored in the :class:`AnonMatch`.
+        s1_supercell: Whether struct1 was expanded into the supercell.
+        species1: Element symbols for each atom of the original struct1.
+        species2: Element symbols for each atom of the original struct2.
+
+    Returns:
+        Tuple ``(cost_uniform, cost_mod_petti)``, each averaged over ``N_large``
+        atom pairs.
+    """
+    n = len(mapping)
+    uniform = 0.0
+    mod_petti = 0.0
+    if s1_supercell:
+        # mapping[i]=j: struct2 atom i ↔ struct1_supercell atom j → struct1 atom j // fu
+        for i, j in enumerate(mapping):
+            e1 = species1[int(j) // fu]
+            e2 = species2[i]
+            uniform += subst_cost_uniform(e1, e2)
+            mod_petti += subst_cost_mod_petti(e1, e2)
+    else:
+        # mapping[i]=j: struct2_supercell atom i ↔ struct1 atom j; orig s2 = i // fu
+        for i, j in enumerate(mapping):
+            e1 = species1[int(j)]
+            e2 = species2[i // fu]
+            uniform += subst_cost_uniform(e1, e2)
+            mod_petti += subst_cost_mod_petti(e1, e2)
+    return uniform / n, mod_petti / n
+
+
 def _match_pair(
     matcher: StructureMatcher,
     s1_anon: Structure,
     s2_anon: Structure,
     idx1: int,
     idx2: int,
+    species1: list[str],
+    species2: list[str],
 ) -> AnonMatch | None:
     """Attempt an anonymous geometric match between one pair of structures.
 
@@ -100,6 +152,8 @@ def _match_pair(
         idx1: Index of the first structure in the caller's list (stored in the
             returned :class:`AnonMatch` without modification).
         idx2: Index of the second structure in the caller's list.
+        species1: Element symbols for each atom of the original struct1.
+        species2: Element symbols for each atom of the original struct2.
 
     Returns:
         An :class:`AnonMatch` if a match was found, otherwise ``None``.
@@ -125,27 +179,31 @@ def _match_pair(
         return None
 
     rms, _dists, sc_m, translation, raw_mapping = match
+    mapping = np.asarray(raw_mapping, dtype=np.int32)
+    cost_u, cost_mp = _compute_atom_costs(mapping, fu, s1_supercell, species1, species2)
     return AnonMatch(
         idx1=idx1,
         idx2=idx2,
         fu=fu,
         s1_supercell=s1_supercell,
         supercell_matrix=np.asarray(sc_m, dtype=int),
-        mapping=np.asarray(raw_mapping, dtype=np.int32),
+        mapping=mapping,
         translation=np.asarray(translation, dtype=float),
         rms=float(rms),
+        cost_uniform=cost_u,
+        cost_mod_petti=cost_mp,
     )
 
 
 # Module-level state populated by _init_worker in each spawned subprocess.
-_g_s2_by_n: dict[int, list[tuple[int, Structure]]] = {}
+_g_s2_by_n: dict[int, list[tuple[int, Structure, list[str]]]] = {}
 _g_all_s2_counts: set[int] = set()
 _g_matcher: StructureMatcher | None = None
 _g_compatible_ns_cache: dict[int, tuple[int, ...]] = {}
 
 
 def _init_worker(
-    s2_by_n: dict[int, list[tuple[int, Structure]]],
+    s2_by_n: dict[int, list[tuple[int, Structure, list[str]]]],
     matcher_kwargs: dict[str, Any],
 ) -> None:
     """Pool initializer: populate per-worker globals once per subprocess."""
@@ -179,10 +237,11 @@ def _process_struct1(args: tuple[int, Structure]) -> list[AnonMatch]:
         return []
     assert _g_matcher is not None, "_init_worker was not called"
     s1_anon = _anonymize(s1)
+    species1 = [site.specie.symbol for site in s1]
     matches: list[AnonMatch] = []
     for n2 in compatible_ns:
-        for j, s2_anon in _g_s2_by_n[n2]:
-            m = _match_pair(_g_matcher, s1_anon, s2_anon, i, j)
+        for j, s2_anon, species2 in _g_s2_by_n[n2]:
+            m = _match_pair(_g_matcher, s1_anon, s2_anon, i, j, species1, species2)
             if m is not None:
                 matches.append(m)
     return matches
@@ -221,9 +280,9 @@ def match_anonymous(
     matcher_kwargs.setdefault("attempt_supercell", True)
 
     # Anonymise structs2 once and group by atom count for O(1) pre-filtering.
-    s2_by_n: dict[int, list[tuple[int, Structure]]] = defaultdict(list)
+    s2_by_n: dict[int, list[tuple[int, Structure, list[str]]]] = defaultdict(list)
     for j, s in enumerate(structs2):
-        s2_by_n[len(s)].append((j, _anonymize(s)))
+        s2_by_n[len(s)].append((j, _anonymize(s), [site.specie.symbol for site in s]))
 
     results: list[AnonMatch] = []
 
@@ -246,9 +305,10 @@ def match_anonymous(
                 continue
 
             s1_anon = _anonymize(s1)
+            species1 = [site.specie.symbol for site in s1]
             for n2 in compatible_ns:
-                for j, s2_anon in s2_by_n[n2]:
-                    m = _match_pair(matcher, s1_anon, s2_anon, i, j)
+                for j, s2_anon, species2 in s2_by_n[n2]:
+                    m = _match_pair(matcher, s1_anon, s2_anon, i, j, species1, species2)
                     if m is not None:
                         results.append(m)
     else:

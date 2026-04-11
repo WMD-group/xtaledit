@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import numpy as np
 from pymatgen.core import Lattice, Structure
 
@@ -38,6 +40,36 @@ def test_match_anonymous_mapping_is_consistent_for_supercell_cases() -> None:
     assert len(m_small_large.mapping) == len(large)
     assert np.array_equal(np.sort(m_small_large.mapping), np.arange(len(large)))
     assert np.all((m_small_large.mapping // m_small_large.fu) < len(small))
+
+
+def test_match_anonymous_costs_self_match() -> None:
+    small = _small_structure()
+    matches = match_anonymous([small], [small])
+    assert len(matches) == 1
+    m = matches[0]
+    assert not math.isnan(m.cost_uniform)
+    assert not math.isnan(m.cost_mod_petti)
+    assert m.cost_uniform == 0.0
+    assert m.cost_mod_petti == 0.0
+
+
+def test_match_anonymous_costs_substituted_supercell() -> None:
+    large = _large_structure_from_small()  # KBr supercell (2×NaCl), all atoms differ
+    small = _small_structure()
+
+    # large in structs1, small in structs2 (s1_supercell=False)
+    matches = match_anonymous([large], [small])
+    assert len(matches) == 1
+    m = matches[0]
+    assert m.cost_uniform == 1.0  # every atom is substituted
+    assert m.cost_mod_petti > 0.0
+
+    # small in structs1, large in structs2 (s1_supercell=True)
+    matches2 = match_anonymous([small], [large])
+    assert len(matches2) == 1
+    m2 = matches2[0]
+    assert m2.cost_uniform == 1.0
+    assert m2.cost_mod_petti > 0.0
 
 
 def test_match_anonymous_rejects_non_divisible_site_counts() -> None:
