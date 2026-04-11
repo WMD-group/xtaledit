@@ -5,7 +5,7 @@ fully anonymous (geometry-only) matching against the Niggli-reduced training set
 and saves the results as a compressed pickle archive.
 
 Sources:
-    input/gen/preprocessed/<model>_relaxed_niggli.pkl.gz  -> list[Structure]
+    input/gen/preprocessed/<model>/relaxed_niggli.pkl.gz  -> list[Structure]
     input/train/preprocessed/train.pkl.gz                 -> list[Structure]
 
 Outputs:
@@ -57,7 +57,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--model",
         default=None,
-        help="Model name (stem of <model>_relaxed_niggli.pkl.gz). "
+        help="Model name (subdirectory of input/gen/preprocessed/). "
         "If omitted, all models are processed.",
     )
     p.add_argument(
@@ -92,13 +92,13 @@ def main() -> None:
     args = parse_args()
 
     if args.model is not None:
-        p = GEN_PRE_DIR / f"{args.model}_relaxed_niggli.pkl.gz"
+        p = GEN_PRE_DIR / args.model / "relaxed_niggli.pkl.gz"
         if not p.exists():
             print(f"Error: no file found for model '{args.model}' at {p}")
             return
         gen_files = [p]
     else:
-        gen_files = sorted(GEN_PRE_DIR.glob("*_relaxed_niggli.pkl.gz"))
+        gen_files = sorted(GEN_PRE_DIR.glob("*/relaxed_niggli.pkl.gz"))
 
     if not gen_files:
         print("No generated structure files found.")
@@ -113,7 +113,7 @@ def main() -> None:
     matcher_kwargs: dict[str, Any] = dict(_parse_kwarg(kv) for kv in args.sm)
 
     for gen_path in gen_files:
-        stem = gen_path.name.removesuffix("_relaxed_niggli.pkl.gz")
+        stem = gen_path.parent.name
         out_path = RESULTS_DIR / stem / f"{args.output}.pkl.gz"
 
         if out_path.exists():

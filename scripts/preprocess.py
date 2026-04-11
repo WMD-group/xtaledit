@@ -13,11 +13,11 @@ Sources:
     input/train/raw/train.csv           -> CSV with "cif" column
 
 Outputs:
-    input/gen/preprocessed/<model>_relaxed.pkl.gz           -> raw relaxed
-    input/gen/preprocessed/<model>_relaxed_niggli.pkl.gz    -> Niggli-reduced relaxed
-    input/gen/preprocessed/<model>_relax_infos.pkl.gz       -> relaxation infos
-    input/gen/preprocessed/<model>_ehull_unrelaxed.pkl.gz   -> list[float] e-above-hull
-    input/gen/preprocessed/<model>_ehull_relaxed.pkl.gz     -> list[float] e-above-hull
+    input/gen/preprocessed/<model>/relaxed.pkl.gz           -> raw relaxed
+    input/gen/preprocessed/<model>/relaxed_niggli.pkl.gz    -> Niggli-reduced relaxed
+    input/gen/preprocessed/<model>/relax_infos.pkl.gz       -> relaxation infos
+    input/gen/preprocessed/<model>/ehull_unrelaxed.pkl.gz   -> list[float] e-above-hull
+    input/gen/preprocessed/<model>/ehull_relaxed.pkl.gz     -> list[float] e-above-hull
     input/train/preprocessed/train.pkl.gz                   -> list[Structure] (pickle)
 
 Already-existing output files are skipped.
@@ -81,12 +81,14 @@ def preprocess_gen() -> None:
 
     for src in sorted(GEN_RAW_DIR.glob("*.pkl.gz")):
         stem = _stem(src)
+        out_dir = GEN_OUT_DIR / stem
+        out_dir.mkdir(parents=True, exist_ok=True)
 
-        dst_relaxed = GEN_OUT_DIR / f"{stem}_relaxed.pkl.gz"
-        dst_relaxed_niggli = GEN_OUT_DIR / f"{stem}_relaxed_niggli.pkl.gz"
-        dst_infos = GEN_OUT_DIR / f"{stem}_relax_infos.pkl.gz"
-        dst_ehull_u = GEN_OUT_DIR / f"{stem}_ehull_unrelaxed.pkl.gz"
-        dst_ehull_r = GEN_OUT_DIR / f"{stem}_ehull_relaxed.pkl.gz"
+        dst_relaxed = out_dir / "relaxed.pkl.gz"
+        dst_relaxed_niggli = out_dir / "relaxed_niggli.pkl.gz"
+        dst_infos = out_dir / "relax_infos.pkl.gz"
+        dst_ehull_u = out_dir / "ehull_unrelaxed.pkl.gz"
+        dst_ehull_r = out_dir / "ehull_relaxed.pkl.gz"
 
         structures: list[Structure] = _load(src)
 
