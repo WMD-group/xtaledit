@@ -25,3 +25,6 @@ results/
 # out and err logs
 *.out
 *.err
+
+# job submission scripts
+jobs/
