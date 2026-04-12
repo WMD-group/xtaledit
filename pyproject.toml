@@ -35,6 +35,7 @@ dev = [
     "tabulate>=0.10.0",
     "ipykernel>=6.0",
     "notebook>=7.0",
+    "pymatviz>=0.17.0",
 ]
 
 [tool.ruff]
