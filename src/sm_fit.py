@@ -63,3 +63,44 @@ def match_structures(
     if not pairs:
         return np.empty((0, 2), dtype=np.int32)
     return np.array(pairs, dtype=np.int32)
+
+
+def match_paired_structures(
+    a: list[Structure],
+    b: list[Structure],
+    fit_kwargs: dict[str, Any] | None = None,
+    **matcher_kwargs: Any,
+) -> np.ndarray:
+    """Match corresponding structures from two equally sized lists.
+
+    Args:
+        a: First list of structures.
+        b: Second list of structures. ``b[i]`` is compared with ``a[i]``.
+        fit_kwargs: Forwarded to ``StructureMatcher.fit``.
+        **matcher_kwargs: Forwarded to the ``StructureMatcher`` constructor.
+
+    Returns:
+        Boolean array of shape ``(len(a),)`` where element ``i`` is true if
+        ``a[i]`` matches ``b[i]``.
+
+    Raises:
+        ValueError: If ``a`` and ``b`` do not have the same length.
+    """
+    if len(a) != len(b):
+        raise ValueError(
+            f"paired structure lists differ in length: {len(a)} != {len(b)}"
+        )
+
+    matcher = StructureMatcher(**matcher_kwargs)
+    return np.array(
+        [
+            matcher.fit(a_struct, b_struct, **(fit_kwargs or {}))
+            for a_struct, b_struct in tqdm(
+                zip(a, b, strict=True),
+                total=len(a),
+                desc="Matching pairs",
+                unit="struct",
+            )
+        ],
+        dtype=np.bool_,
+    )
