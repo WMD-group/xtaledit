@@ -19,16 +19,22 @@ dependencies = [
     "ase",
     "mp-api",
     "python-dotenv",
+    "smact",
     "tqdm>=4.0",
 ]
 
 [dependency-groups]
 dev = [
     "isort>=5.13",
+    "matplotlib>=3.8",
     "mypy>=1.0",
     "pre-commit>=3.0",
     "pytest>=8.0",
     "ruff>=0.4",
+    "seaborn>=0.13.0",
+    "tabulate>=0.10.0",
+    "ipykernel>=6.0",
+    "notebook>=7.0",
 ]
 
 [tool.ruff]

@@ -1,10 +1,11 @@
 """Preprocess crystal structures: relax, compute e-above-hull, and Niggli-reduce.
 
 For each AI-generated model in input/gen/raw/<model>.pkl.gz, this script:
-  1. Relaxes structures with MACE-MP and saves raw relaxed structures.
-  2. Saves per-structure relaxation infos (energies, convergence).
-  3. Computes e-above-hull for unrelaxed (MACE initial energy) and relaxed structures.
-  4. Niggli-reduces the relaxed structures.
+  1. Computes SMACT composition validity for raw generated structures.
+  2. Relaxes structures with MACE-MP and saves raw relaxed structures.
+  3. Saves per-structure relaxation infos (energies, convergence).
+  4. Computes e-above-hull for unrelaxed (MACE initial energy) and relaxed structures.
+  5. Niggli-reduces the relaxed structures.
 
 For the training set in input/train/raw/train.csv, Niggli reduction is applied.
 
@@ -18,6 +19,7 @@ Outputs:
     input/gen/preprocessed/<model>/relax_infos.pkl.gz       -> relaxation infos
     input/gen/preprocessed/<model>/ehull_unrelaxed.pkl.gz   -> list[float] e-above-hull
     input/gen/preprocessed/<model>/ehull_relaxed.pkl.gz     -> list[float] e-above-hull
+    input/gen/preprocessed/<model>/smact_validity.npz       -> bool array "valid"
     input/train/preprocessed/train.pkl.gz                   -> list[Structure] (pickle)
 
 Already-existing output files are skipped.
@@ -30,18 +32,19 @@ import pickle
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
 from mp_api.client import MPRester
 from pymatgen.analysis.phase_diagram import PatchedPhaseDiagram
 from pymatgen.core import Structure
+from smact.screening import smact_validity
 from tqdm import tqdm
 
 from src.config import INPUT_DIR
 from src.energy import build_phase_diagram, compute_ehulls, relax_structures
 
 load_dotenv()
-MP_API_KEY: str = os.environ["MP_API_KEY"]
 
 GEN_RAW_DIR = INPUT_DIR / "gen" / "raw"
 GEN_OUT_DIR = INPUT_DIR / "gen" / "preprocessed"
@@ -71,8 +74,18 @@ def _stem(path: Path) -> str:
 def _get_ppd() -> PatchedPhaseDiagram:
     if PPD_CACHE.exists():
         return _load(PPD_CACHE)
-    with MPRester(MP_API_KEY) as mpr:
+    with MPRester(os.environ["MP_API_KEY"]) as mpr:
         return build_phase_diagram(mpr, cache_path=PPD_CACHE)
+
+
+def compute_smact_validities(structures: list[Structure]) -> np.ndarray:
+    return np.array(
+        [
+            smact_validity(structure.composition)
+            for structure in tqdm(structures, desc="smact validity")
+        ],
+        dtype=np.bool_,
+    )
 
 
 def preprocess_gen() -> None:
@@ -89,10 +102,19 @@ def preprocess_gen() -> None:
         dst_infos = out_dir / "relax_infos.pkl.gz"
         dst_ehull_u = out_dir / "ehull_unrelaxed.pkl.gz"
         dst_ehull_r = out_dir / "ehull_relaxed.pkl.gz"
+        dst_smact_validity = out_dir / "smact_validity.npz"
 
         structures: list[Structure] = _load(src)
 
-        # Step 1: Relax
+        # Step 1: SMACT validity
+        if dst_smact_validity.exists():
+            print(f"{stem}: smact validity already done, skipping")
+        else:
+            valid = compute_smact_validities(structures)
+            np.savez_compressed(dst_smact_validity, valid=valid)
+            print(f"{stem}: smact validity -> {dst_smact_validity}")
+
+        # Step 2: Relax
         relaxed: list[Structure] | None = None
         infos: list[dict[str, Any] | None] | None = None
 
@@ -105,7 +127,7 @@ def preprocess_gen() -> None:
             _save(infos, dst_infos)
             print(f"{stem}: relaxed -> {dst_relaxed}")
 
-        # Step 2: E-above-hull
+        # Step 3: E-above-hull
         if not dst_ehull_u.exists() or not dst_ehull_r.exists():
             if relaxed is None:
                 relaxed = _load(dst_relaxed)
@@ -142,7 +164,7 @@ def preprocess_gen() -> None:
         else:
             print(f"{stem}: ehull already done, skipping")
 
-        # Step 3: Niggli-reduce relaxed
+        # Step 4: Niggli-reduce relaxed
         if dst_relaxed_niggli.exists():
             print(f"{stem}: niggli (relaxed) already done, skipping")
         else:
