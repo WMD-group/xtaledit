@@ -19,8 +19,8 @@ results/
 # claude settings
 .claude/
 
-# codex
-.codex
+# codex settings
+.codex/
 
 # out and err logs
 *.out
