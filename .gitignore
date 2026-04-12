@@ -18,3 +18,10 @@ results/
 
 # claude settings
 .claude/
+
+# codex
+.codex
+
+# out and err logs
+*.out
+*.err
