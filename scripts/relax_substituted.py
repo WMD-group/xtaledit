@@ -8,8 +8,8 @@ Sources:
     substituted_abc.pkl.gz   -> list[SubstitutedEntry]
 
 Outputs (same directory as input):
-    substituted_relaxed_abc.pkl.gz        -> list[SubstitutedEntry] (relaxed)
-    substituted_relaxed_abc_infos.pkl.gz  -> list[dict | None]
+    substituted_relaxed_niggli_abc.pkl.gz        -> list[SubstitutedEntry] (relaxed)
+    substituted_relaxed_niggli_abc_infos.pkl.gz  -> list[dict | None]
 """
 
 from __future__ import annotations
@@ -48,8 +48,8 @@ def derive_output_paths(input_path: Path) -> tuple[Path, Path]:
     Returns:
         Tuple of output paths in the same directory:
 
-        - entries output: ``substituted_relaxed_<rest>.pkl.gz``
-        - infos output:   ``substituted_relaxed_<rest>_infos.pkl.gz``
+        - entries output: ``substituted_relaxed_niggli_<rest>.pkl.gz``
+        - infos output:   ``substituted_relaxed_niggli_<rest>_infos.pkl.gz``
 
     Raises:
         SystemExit: If the filename does not start with ``substituted_``.
@@ -61,9 +61,9 @@ def derive_output_paths(input_path: Path) -> tuple[Path, Path]:
             f"error: input filename must start with '{prefix}', got: {name}"
         )
     rest = name[len(prefix) :]  # e.g. "abc.pkl.gz"
-    entries_out = input_path.parent / f"substituted_relaxed_{rest}"
+    entries_out = input_path.parent / f"substituted_relaxed_niggli_{rest}"
     # Strip .pkl.gz to build infos name, then re-add extension.
-    base = f"substituted_relaxed_{rest}".removesuffix(".pkl.gz")
+    base = f"substituted_relaxed_niggli_{rest}".removesuffix(".pkl.gz")
     infos_out = input_path.parent / f"{base}_infos.pkl.gz"
     return entries_out, infos_out
 
@@ -98,7 +98,9 @@ def process_file(path: Path, args: argparse.Namespace) -> None:
     )
 
     for entry, relaxed in zip(entries, relaxed_structures):
-        entry.structure = relaxed
+        entry.structure = relaxed.get_primitive_structure().get_reduced_structure(
+            reduction_algo="niggli"
+        )
 
     _save(entries, entries_out)
     print(f"  entries -> {entries_out}")
