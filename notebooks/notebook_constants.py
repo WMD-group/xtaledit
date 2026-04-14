@@ -24,6 +24,7 @@ METASTABLE_EHULL_MAX = 0.1
 GEN_FILE = "relaxed_niggli.pkl.gz"
 TRAIN_FILE = "train.pkl.gz"
 EHULL_RELAXED_FILE = "ehull_relaxed.pkl.gz"
+EHULL_RELAXED_INFO_FILE = "relax_infos.pkl.gz"
 SMACT_VALIDITY_FILE = "smact_validity.npz"
 
 SM_FIT_FILE = "sm_fit.npz"
