@@ -12,6 +12,7 @@ wheels/
 # input and output files
 input/
 results/
+notebooks/.cache/
 
 # secrets
 .env
