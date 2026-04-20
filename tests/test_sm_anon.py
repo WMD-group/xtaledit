@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import math
+import time
 
 import numpy as np
 from pymatgen.core import Lattice, Structure
 
-from src.sm_anon import match_anonymous
+import src.sm_anon as sm_anon
+from src.sm_anon import AnonMatch, match_anonymous
 
 
 def _small_structure() -> Structure:
@@ -21,6 +23,28 @@ def _large_structure_from_small() -> Structure:
     large.make_supercell([2, 1, 1])
     large.replace_species({"Na": "K", "Cl": "Br"})
     return large
+
+
+def _dummy_match(idx1: int) -> AnonMatch:
+    return AnonMatch(
+        idx1=idx1,
+        idx2=0,
+        fu=1,
+        s1_supercell=True,
+        supercell_matrix=np.eye(3, dtype=int),
+        mapping=np.array([0], dtype=np.int32),
+        translation=np.zeros(3),
+        rms=0.0,
+        cost_uniform=0.0,
+        cost_mod_petti=0.0,
+    )
+
+
+def _partial_then_sleep(args: tuple[int, Structure]):
+    i, _s1 = args
+    yield _dummy_match(i)
+    if i == 0:
+        time.sleep(5)
 
 
 def test_match_anonymous_mapping_is_consistent_for_supercell_cases() -> None:
@@ -81,3 +105,37 @@ def test_match_anonymous_rejects_non_divisible_site_counts() -> None:
     two_site = _small_structure()
 
     assert match_anonymous([three_site], [two_site]) == []
+
+
+def test_match_anonymous_parallel_timeout_keeps_normal_matches() -> None:
+    small = _small_structure()
+
+    matches = match_anonymous([small], [small], n_jobs=2, timeout_sec=30.0)
+
+    assert len(matches) == 1
+    assert matches[0].idx1 == 0
+
+
+def test_match_anonymous_timeout_keeps_partial_matches(monkeypatch) -> None:
+    monkeypatch.setattr(sm_anon, "_iter_struct1_matches", _partial_then_sleep)
+    small = _small_structure()
+
+    matches = match_anonymous(
+        [small, small],
+        [small],
+        n_jobs=2,
+        timeout_sec=0.5,
+    )
+
+    assert sorted(m.idx1 for m in matches) == [0, 1]
+
+
+def test_match_anonymous_timeout_requires_parallel_jobs() -> None:
+    small = _small_structure()
+
+    try:
+        match_anonymous([small], [small], n_jobs=1, timeout_sec=1.0)
+    except ValueError as exc:
+        assert "n_jobs != 1" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError")

@@ -85,6 +85,15 @@ def parse_args() -> argparse.Namespace:
             "Pass -1 to use max(1, cpu_count // 3) workers."
         ),
     )
+    p.add_argument(
+        "--timeout-sec",
+        type=float,
+        default=3600.0,
+        help=(
+            "Per-generated-structure timeout in seconds for parallel matching "
+            "when --jobs is not 1 (default: 3600). Pass 0 to disable."
+        ),
+    )
     return p.parse_args()
 
 
@@ -125,7 +134,16 @@ def main() -> None:
         n_gen, n_train = len(gen), len(train)
         print(f"{stem}: matching {n_gen:,} generated vs {n_train:,} training")
 
-        matches = match_anonymous(gen, train, n_jobs=args.jobs, **matcher_kwargs)
+        timeout_sec = (
+            None if args.timeout_sec == 0 or args.jobs == 1 else args.timeout_sec
+        )
+        matches = match_anonymous(
+            gen,
+            train,
+            n_jobs=args.jobs,
+            timeout_sec=timeout_sec,
+            **matcher_kwargs,
+        )
 
         out_path.parent.mkdir(parents=True, exist_ok=True)
         _save(matches, out_path)
