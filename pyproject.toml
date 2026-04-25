@@ -25,7 +25,9 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "average-minimum-distance>=1.4",
     "isort>=5.13",
+    "matminer>=0.9.3",
     "matplotlib>=3.8",
     "mypy>=1.0",
     "pre-commit>=3.0",
@@ -36,6 +38,8 @@ dev = [
     "ipykernel>=6.0",
     "notebook>=7.0",
     "pymatviz>=0.17.0",
+    "scikit-learn>=1.4",
+    "umap-learn>=0.5",
 ]
 
 [tool.ruff]
