@@ -2,11 +2,17 @@
 
 CATEGORY_ORDER = ["1", "2-1", "2-2", "2-3", "3"]
 CATEGORY_LABELS = {
-    "1": "exact match",
-    "2-1": "subst match: both",
-    "2-2": "subst match: sm-anon",
-    "2-3": "subst match: wyckoff",
-    "3": "no match",
+    "1": "Duplicate",
+    "2-1": "Substituted (both)",
+    "2-2": "Substituted (SM-anon only)",
+    "2-3": "Substituted (Wyckoff only)",
+    "3": "Unmatched",
+}
+SIMPLE_CATEGORY_ORDER = ["1", "2", "3"]
+SIMPLE_CATEGORY_LABELS = {
+    "1": "Duplicate",
+    "2": "Substituted",
+    "3": "Unmatched",
 }
 CRYSTAL_SYSTEM_ORDER = [
     "triclinic",
