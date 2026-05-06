@@ -25,6 +25,7 @@ Outputs:
 Already-existing output files are skipped.
 """
 
+import argparse
 import gzip
 import math
 import os
@@ -88,11 +89,22 @@ def compute_smact_validities(structures: list[Structure]) -> np.ndarray:
     )
 
 
-def preprocess_gen() -> None:
+def _gen_sources(gen_file: Path | None = None) -> list[Path]:
+    if gen_file is None:
+        return sorted(GEN_RAW_DIR.glob("*.pkl.gz"))
+
+    if not gen_file.name.endswith(".pkl.gz"):
+        raise SystemExit(f"error: generated file must end with .pkl.gz: {gen_file}")
+    if not gen_file.exists():
+        raise SystemExit(f"error: generated file not found: {gen_file}")
+    return [gen_file]
+
+
+def preprocess_gen(gen_file: Path | None = None) -> None:
     GEN_OUT_DIR.mkdir(parents=True, exist_ok=True)
     ppd: PatchedPhaseDiagram | None = None
 
-    for src in sorted(GEN_RAW_DIR.glob("*.pkl.gz")):
+    for src in _gen_sources(gen_file):
         stem = _stem(src)
         out_dir = GEN_OUT_DIR / stem
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -194,6 +206,25 @@ def preprocess_train() -> None:
     print(f"train: {len(reduced)} structures -> {TRAIN_OUT}")
 
 
-if __name__ == "__main__":
-    preprocess_gen()
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument(
+        "--gen-file",
+        type=Path,
+        default=None,
+        help=(
+            "Generated .pkl.gz file to preprocess. "
+            "If omitted, all files in input/gen/raw/ are processed."
+        ),
+    )
+    return p.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    preprocess_gen(args.gen_file)
     preprocess_train()
+
+
+if __name__ == "__main__":
+    main()
