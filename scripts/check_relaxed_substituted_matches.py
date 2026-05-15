@@ -6,6 +6,7 @@ Sources:
 
 Outputs:
     substituted_relaxed_abc_gen_matches.pkl.gz -> list[dict]
+    <output>.pkl.gz                            -> list[dict]
 """
 
 from __future__ import annotations
@@ -51,8 +52,10 @@ def _save(obj: Any, path: Path) -> None:
         pickle.dump(obj, f)
 
 
-def derive_output_path(input_path: Path) -> Path:
+def derive_output_path(input_path: Path, output_stem: str | None = None) -> Path:
     """Return the output path derived from a relaxed substituted entries path."""
+    if output_stem is not None:
+        return input_path.with_name(f"{output_stem}.pkl.gz")
     return input_path.with_name(
         f"{input_path.name.removesuffix('.pkl.gz')}_gen_matches.pkl.gz"
     )
@@ -100,7 +103,7 @@ def process_file(
     fit_kwargs: dict[str, Any],
 ) -> None:
     """Check one relaxed substituted entries file and write match records."""
-    out_path = derive_output_path(path)
+    out_path = derive_output_path(path, args.output)
     if out_path.exists() and not args.force:
         print(
             f"{path.name}: output exists at {out_path}, skipping (--force to overwrite)"
@@ -162,6 +165,15 @@ def parse_args() -> argparse.Namespace:
         help="StructureMatcher.fit kwarg (repeatable).",
     )
     p.add_argument(
+        "--output",
+        metavar="STEM",
+        help=(
+            "Output filename stem (writes <input-dir>/<STEM>.pkl.gz). "
+            "Only valid with one input path. If omitted, output is derived from "
+            "the input filename."
+        ),
+    )
+    p.add_argument(
         "--force",
         action="store_true",
         help="Overwrite existing output files.",
@@ -171,6 +183,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    if args.output is not None and len(args.paths) > 1:
+        raise SystemExit("error: --output can only be used with one input path")
     if not args.gen_path.exists():
         raise SystemExit(f"error: generated structures not found: {args.gen_path}")
     for path in args.paths:
