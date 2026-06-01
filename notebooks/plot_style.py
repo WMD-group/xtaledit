@@ -30,7 +30,13 @@ CATEGORY_COLORS = {
 
 def apply_plot_style() -> None:
     """Apply the shared notebook plotting style."""
-    plt.rcParams["font.family"] = "cmr10"
-    plt.rcParams["mathtext.fontset"] = "cm"
+    # plt.rcParams["font.family"] = "cmr10"
+    # plt.rcParams["mathtext.fontset"] = "cm"
+    plt.rcParams["font.family"] = "sans-serif"
+    plt.rcParams["font.sans-serif"] = ["Arial"]
+    plt.rcParams["mathtext.fontset"] = "custom"
+    plt.rcParams["mathtext.rm"] = "Arial"
+    plt.rcParams["mathtext.it"] = "Arial:italic"
+    plt.rcParams["mathtext.bf"] = "Arial:bold"
     plt.rcParams["axes.formatter.use_mathtext"] = True
     sns.set_palette(PALETTE)
