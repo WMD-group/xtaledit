@@ -9,9 +9,12 @@ Sources:
     input/train/preprocessed/train.pkl.gz                 -> list[Structure]
 
 Outputs:
-    results/<model>/wyckoff_match_s={symprec}_c={cost}.pkl.gz  -> list[WyckoffMatch]
-    results/<model>/wyckoff_repr_s={symprec}.pkl.gz            -> list[WyckoffData]
-    results/train/wyckoff_repr_s={symprec}.pkl.gz              -> list[WyckoffData]
+    results/raw/<model>/wyckoff_match_s={symprec}_c={cost}.pkl.gz
+        -> list[WyckoffMatch]
+    results/raw/<model>/wyckoff_repr_s={symprec}.pkl.gz
+        -> list[WyckoffData]
+    results/raw/train/wyckoff_repr_s={symprec}.pkl.gz
+        -> list[WyckoffData]
 
 Already-existing output files are skipped.
 """
@@ -24,7 +27,7 @@ import pickle
 from pathlib import Path
 from typing import Any
 
-from src.config import INPUT_DIR, RESULTS_DIR
+from src.config import INPUT_DIR, RAW_RESULTS_DIR
 from src.wyckoff_match import WyckoffData, match_wyckoff
 
 GEN_PRE_DIR = INPUT_DIR / "gen" / "preprocessed"
@@ -80,9 +83,11 @@ def main() -> None:
         print("No generated structure files found.")
         return
 
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    RAW_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    data_train_path = RESULTS_DIR / "train" / f"wyckoff_repr_s={args.symprec}.pkl.gz"
+    data_train_path = (
+        RAW_RESULTS_DIR / "train" / f"wyckoff_repr_s={args.symprec}.pkl.gz"
+    )
 
     print(f"Loading training structures from {TRAIN_PATH}")
     train = _load(TRAIN_PATH)
@@ -96,7 +101,7 @@ def main() -> None:
 
     for gen_path in gen_files:
         stem = gen_path.parent.name
-        out_dir = RESULTS_DIR / stem
+        out_dir = RAW_RESULTS_DIR / stem
         matches_path = out_dir / f"wyckoff_match_s={args.symprec}_c={args.cost}.pkl.gz"
         data_gen_path = out_dir / f"wyckoff_repr_s={args.symprec}.pkl.gz"
 

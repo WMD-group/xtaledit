@@ -162,12 +162,12 @@ def simple_category(category: str) -> str:
 def required_paths(
     model: str,
     input_dir: Path,
-    results_dir: Path,
+    raw_results_dir: Path,
     keys: Iterable[str] | None = None,
 ) -> dict[str, Path]:
     """Build required input/result paths for a model."""
     gen_dir = input_dir / "gen" / "preprocessed" / model
-    result_dir = results_dir / model
+    result_dir = raw_results_dir / model
     train_dir = input_dir / "train" / "preprocessed"
     all_paths = {
         "generated_structures": gen_dir / GEN_FILE,

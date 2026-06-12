@@ -9,7 +9,7 @@ Sources:
     input/train/preprocessed/train.pkl.gz                 -> list[Structure]
 
 Outputs:
-    results/<model>/<output>.pkl.gz  -> list[AnonMatch]
+    results/raw/<model>/<output>.pkl.gz  -> list[AnonMatch]
 
 Already-existing output files are skipped.
 """
@@ -23,7 +23,7 @@ import pickle
 from pathlib import Path
 from typing import Any
 
-from src.config import INPUT_DIR, RESULTS_DIR
+from src.config import INPUT_DIR, RAW_RESULTS_DIR
 from src.sm_anon import match_anonymous
 
 GEN_PRE_DIR = INPUT_DIR / "gen" / "preprocessed"
@@ -72,7 +72,8 @@ def parse_args() -> argparse.Namespace:
         "--output",
         default="sm_anon",
         help=(
-            "Output filename stem (default: sm_anon → results/<model>/sm_anon.pkl.gz)."
+            "Output filename stem "
+            "(default: sm_anon → results/raw/<model>/sm_anon.pkl.gz)."
         ),
     )
     p.add_argument(
@@ -113,7 +114,7 @@ def main() -> None:
         print("No generated structure files found.")
         return
 
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    RAW_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     print(f"Loading training structures from {TRAIN_PATH}")
     train = _load(TRAIN_PATH)
@@ -123,7 +124,7 @@ def main() -> None:
 
     for gen_path in gen_files:
         stem = gen_path.parent.name
-        out_path = RESULTS_DIR / stem / f"{args.output}.pkl.gz"
+        out_path = RAW_RESULTS_DIR / stem / f"{args.output}.pkl.gz"
 
         if out_path.exists():
             print(f"{stem}: matches already exist at {out_path}, skipping")

@@ -60,7 +60,9 @@ input/
     ├── raw/           # Original training structures
     └── preprocessed/  # After cleaning/normalization
 
-results/               # Evaluation outputs, intermediate results, derived structures
+results/
+├── raw/               # Script outputs and intermediate evaluation artifacts
+└── analysis/          # Notebook figures, tables, and derived structures
 ```
 
 ## Agent workflow

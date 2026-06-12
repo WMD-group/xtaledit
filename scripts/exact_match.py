@@ -9,8 +9,8 @@ Sources:
     input/train/preprocessed/train.pkl.gz                 -> list[Structure]
 
 Outputs:
-    results/<model>/<output>.npz  -> int32 array of shape (n_matches, 2)
-                                             columns: [gen_idx, train_idx]
+    results/raw/<model>/<output>.npz  -> int32 array of shape (n_matches, 2)
+                                                 columns: [gen_idx, train_idx]
 
 Already-existing output files are skipped.
 """
@@ -26,7 +26,7 @@ from typing import Any
 
 import numpy as np
 
-from src.config import INPUT_DIR, RESULTS_DIR
+from src.config import INPUT_DIR, RAW_RESULTS_DIR
 from src.sm_fit import match_structures
 
 GEN_PRE_DIR = INPUT_DIR / "gen" / "preprocessed"
@@ -77,7 +77,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--output",
         default="sm_fit",
-        help="Output filename stem (default: sm_fit → results/<model>/sm_fit.npz).",
+        help=(
+            "Output filename stem (default: sm_fit → results/raw/<model>/sm_fit.npz)."
+        ),
     )
     return p.parse_args()
 
@@ -98,7 +100,7 @@ def main() -> None:
         print("No generated structure files found.")
         return
 
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    RAW_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
     print(f"Loading training structures from {TRAIN_PATH}")
     train = _load(TRAIN_PATH)
@@ -109,7 +111,7 @@ def main() -> None:
 
     for gen_path in gen_files:
         stem = gen_path.parent.name
-        out_path = RESULTS_DIR / stem / f"{args.output}.npz"
+        out_path = RAW_RESULTS_DIR / stem / f"{args.output}.npz"
 
         if out_path.exists():
             print(f"{stem}: matches already exist at {out_path}, skipping")

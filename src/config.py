@@ -15,3 +15,5 @@ load_dotenv()
 ROOT = Path(__file__).resolve().parent.parent
 INPUT_DIR = Path(os.environ.get("INPUT_DIR", str(ROOT / "input")))
 RESULTS_DIR = Path(os.environ.get("RESULTS_DIR", str(ROOT / "results")))
+RAW_RESULTS_DIR = RESULTS_DIR / "raw"
+ANALYSIS_RESULTS_DIR = RESULTS_DIR / "analysis"
