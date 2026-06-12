@@ -129,6 +129,7 @@ def preprocess_gen(gen_file: Path | None = None) -> None:
         # Step 2: Relax
         relaxed: list[Structure] | None = None
         infos: list[dict[str, Any] | None] | None = None
+        relaxation_regenerated = False
 
         if dst_relaxed.exists() and dst_infos.exists():
             print(f"{stem}: relaxation already done, skipping")
@@ -137,10 +138,15 @@ def preprocess_gen(gen_file: Path | None = None) -> None:
             relaxed, infos = relax_structures(structures)
             _save(relaxed, dst_relaxed)
             _save(infos, dst_infos)
+            relaxation_regenerated = True
             print(f"{stem}: relaxed -> {dst_relaxed}")
 
         # Step 3: E-above-hull
-        if not dst_ehull_u.exists() or not dst_ehull_r.exists():
+        if (
+            relaxation_regenerated
+            or not dst_ehull_u.exists()
+            or not dst_ehull_r.exists()
+        ):
             if relaxed is None:
                 relaxed = _load(dst_relaxed)
             if infos is None:
@@ -162,13 +168,13 @@ def preprocess_gen(gen_file: Path | None = None) -> None:
                 for i in infos
             ]
 
-            if not dst_ehull_u.exists():
+            if relaxation_regenerated or not dst_ehull_u.exists():
                 _save(compute_ehulls(structures, e_initial, ppd), dst_ehull_u)
                 print(f"{stem}: ehull (unrelaxed) -> {dst_ehull_u}")
             else:
                 print(f"{stem}: ehull (unrelaxed) already done, skipping")
 
-            if not dst_ehull_r.exists():
+            if relaxation_regenerated or not dst_ehull_r.exists():
                 _save(compute_ehulls(relaxed, e_relaxed, ppd), dst_ehull_r)
                 print(f"{stem}: ehull (relaxed) -> {dst_ehull_r}")
             else:
@@ -177,7 +183,7 @@ def preprocess_gen(gen_file: Path | None = None) -> None:
             print(f"{stem}: ehull already done, skipping")
 
         # Step 4: Niggli-reduce relaxed
-        if dst_relaxed_niggli.exists():
+        if dst_relaxed_niggli.exists() and not relaxation_regenerated:
             print(f"{stem}: niggli (relaxed) already done, skipping")
         else:
             if relaxed is None:

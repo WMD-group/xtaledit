@@ -63,3 +63,54 @@ def test_gen_sources_rejects_non_pkl_gz(tmp_path: Path) -> None:
 def test_gen_sources_rejects_missing_file(tmp_path: Path) -> None:
     with pytest.raises(SystemExit, match="generated file not found"):
         preprocess._gen_sources(tmp_path / "missing.pkl.gz")
+
+
+def test_regenerated_relaxation_overwrites_dependent_outputs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    structure = Structure(
+        Lattice.cubic(3.0),
+        ["Na", "Cl"],
+        [[0, 0, 0], [0.5, 0.5, 0.5]],
+    )
+    relaxed_structure = structure.copy()
+    relaxed_structure.scale_lattice(30.0)
+    infos = [
+        {
+            "energy_per_atom_eV_initial": 1.0,
+            "energy_per_atom_eV": 2.0,
+        }
+    ]
+
+    src = tmp_path / "raw" / "model.pkl.gz"
+    src.parent.mkdir()
+    preprocess._save([structure], src)
+
+    out_dir = tmp_path / "preprocessed" / "model"
+    out_dir.mkdir(parents=True)
+    preprocess._save(infos, out_dir / "relax_infos.pkl.gz")
+    preprocess._save(["old"], out_dir / "ehull_unrelaxed.pkl.gz")
+    preprocess._save(["old"], out_dir / "ehull_relaxed.pkl.gz")
+    preprocess._save(["old"], out_dir / "relaxed_niggli.pkl.gz")
+    np.savez_compressed(out_dir / "smact_validity.npz", valid=[True])
+
+    monkeypatch.setattr(preprocess, "GEN_OUT_DIR", out_dir.parent)
+    monkeypatch.setattr(
+        preprocess,
+        "relax_structures",
+        lambda structures: ([relaxed_structure], infos),
+    )
+    monkeypatch.setattr(preprocess, "_get_ppd", object)
+    monkeypatch.setattr(
+        preprocess,
+        "compute_ehulls",
+        lambda structures, energies, ppd: list(energies),
+    )
+    monkeypatch.setattr(preprocess, "_reduce", lambda structure: structure)
+
+    preprocess.preprocess_gen(src)
+
+    assert preprocess._load(out_dir / "ehull_unrelaxed.pkl.gz") == [1.0]
+    assert preprocess._load(out_dir / "ehull_relaxed.pkl.gz") == [2.0]
+    reduced = preprocess._load(out_dir / "relaxed_niggli.pkl.gz")
+    assert reduced == [relaxed_structure]
