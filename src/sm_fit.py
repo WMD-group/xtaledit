@@ -2,13 +2,35 @@
 
 from __future__ import annotations
 
+import warnings
 from collections import defaultdict
 from typing import Any
 
 import numpy as np
-from pymatgen.analysis.structure_matcher import StructureMatcher
 from pymatgen.core import Structure
+from pymatgen.core.structure_matcher import SpeciesComparator, StructureMatcher
 from tqdm import tqdm
+
+
+def _strict_matcher_kwargs(matcher_kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Return matcher kwargs restricted to strict species-aware matching."""
+    resolved = dict(matcher_kwargs)
+    unsupported = {
+        "ignored_species": ((), "an empty sequence"),
+        "allow_subset": (False, "False"),
+        "comparator": (None, "None"),
+    }
+    for key, (supported, description) in unsupported.items():
+        requested = resolved.get(key, supported)
+        if requested != supported:
+            warnings.warn(
+                f"match_structures does not support {key}={requested!r}; "
+                f"using {description}",
+                UserWarning,
+                stacklevel=3,
+            )
+        resolved[key] = supported
+    return resolved
 
 
 def match_structures(
@@ -19,8 +41,10 @@ def match_structures(
 ) -> np.ndarray:
     """Match structures in *a* against structures in *b* using StructureMatcher.
 
-    Pre-filters pairs to the same chemical system before calling
-    ``StructureMatcher.fit``.
+    Pre-filters pairs using the default species comparator's composition hash
+    before calling ``StructureMatcher.fit``. ``ignored_species``,
+    ``allow_subset=True``, and custom comparators are unsupported and replaced
+    with strict species-aware defaults.
 
     Args:
         a: Generated structures. Their indices in this list appear in column 0
@@ -34,17 +58,20 @@ def match_structures(
         each row ``[i, j]`` means ``a[i]`` matches ``b[j]``. An empty result
         has shape ``(0, 2)``.
     """
-    # Group training structures by chemical system.
-    train_by_sys: dict[frozenset[str], list[tuple[int, Structure]]] = defaultdict(list)
-    for j, s in enumerate(b):
-        key = frozenset(s.composition.chemical_system_set)
-        train_by_sys[key].append((j, s))
+    matcher_kwargs = _strict_matcher_kwargs(matcher_kwargs)
+    comparator = SpeciesComparator()
 
-    # Only enqueue indices of generated structures that share a chemsys with training.
+    # StructureMatcher.fit applies this same hash check before geometric matching.
+    train_by_hash: dict[Any, list[tuple[int, Structure]]] = defaultdict(list)
+    for j, s in enumerate(b):
+        key = comparator.get_hash(s.composition)
+        train_by_hash[key].append((j, s))
+
+    # Only enqueue structures with a compatible fractional composition.
     tasks: list[int] = [
         i
         for i, s in enumerate(a)
-        if frozenset(s.composition.chemical_system_set) in train_by_sys
+        if comparator.get_hash(s.composition) in train_by_hash
     ]
 
     matcher = StructureMatcher(**matcher_kwargs)
@@ -52,8 +79,8 @@ def match_structures(
 
     for a_idx in tqdm(tasks, desc="Matching", unit="struct"):
         a_struct = a[a_idx]
-        sys_key = frozenset(a_struct.composition.chemical_system_set)
-        train_pairs = train_by_sys.get(sys_key, [])
+        composition_hash = comparator.get_hash(a_struct.composition)
+        train_pairs = train_by_hash.get(composition_hash, [])
         pairs.extend(
             (a_idx, b_idx)
             for b_idx, b_struct in train_pairs
