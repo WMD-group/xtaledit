@@ -68,8 +68,11 @@ class WyckoffMatch:
 
     Two structures match when they share the same space group number and the
     same multiset of Wyckoff letters (regardless of which elements occupy each
-    letter).  The optimal correspondence between letters is found by minimising
-    the total element-substitution cost via the Hungarian algorithm.
+    letter).  Within each pair of normalizer representations, repeated
+    occurrences of the same letter are paired by minimising the
+    minimum-image fractional-coordinate distance between orbit
+    representatives.  The requested element-substitution cost then selects
+    the best pair of normalizer representations.
 
     Attributes:
         idx1: Index of the matched structure in the first input list.
@@ -86,9 +89,9 @@ class WyckoffMatch:
             ``structs1[idx1]`` of the atom that atom *j* in ``structs2[idx2]``
             corresponds to.  To substitute elements::
 
-                new = structs1[m.idx1].copy()
-                for j, i in enumerate(m.atom_map):
-                    new.replace(i, structs2[m.idx2][j].specie.symbol)
+                new = structs2[m.idx2].copy()
+                for j2, j1 in enumerate(m.atom_map):
+                    new.replace(j2, structs1[m.idx1][j1].specie.symbol)
 
         repr1_idx: Deduplicated representation index for struct1 (indexes into
             the unique coset equivalence classes of ``structs1[idx1]``).
@@ -206,13 +209,13 @@ def _match_orbits(
     repr_coords1: list[np.ndarray],
     repr_coords2: list[np.ndarray],
 ) -> tuple[float, list[int]]:
-    """Match orbits from struct1 to struct2 by Wyckoff letter, minimising cost.
+    """Match orbits by Wyckoff letter and fractional-coordinate proximity.
 
     When a Wyckoff letter appears exactly once in each structure the match is
     trivial.  When it appears multiple times the assignment is decided by the
     Hungarian algorithm on minimum-image fractional-coordinate distances between
-    orbit representatives; element-substitution costs are then accumulated from
-    the resulting pairs.
+    orbit representatives.  Element-substitution costs do not affect that
+    assignment; they are accumulated afterward from the resulting pairs.
 
     Args:
         letters1: Relabeled Wyckoff letter for each orbit in struct1.
@@ -283,9 +286,12 @@ def match_wyckoff(
 
     Two structures are compatible when they share the same space group number
     and the same multiset of Wyckoff letters (regardless of element).  For each
-    compatible pair the orbit-level assignment that minimises the total
-    element-substitution cost is selected.  All Euclidean-normalizer choices
-    (i.e. all origin settings) for both structures are considered.
+    pair of Euclidean-normalizer representations, repeated occurrences of the
+    same letter are assigned by minimum-image fractional-coordinate distance.
+    The requested element-substitution cost is calculated from that geometric
+    assignment, and the lowest-cost representation pair is retained.  All
+    Euclidean-normalizer choices (i.e. all origin settings) for both structures
+    are considered.
 
     Either raw :class:`~pymatgen.core.Structure` objects or pre-computed
     :class:`WyckoffData` objects (from :func:`precompute`) may be supplied for
@@ -299,7 +305,9 @@ def match_wyckoff(
             List indices appear as ``idx2``.
         cost: Substitution cost policy.  ``"uniform"`` charges 1 per orbit
             where the elements differ; ``"mod_petti"`` charges the absolute
-            difference of modified Pettifor numbers.
+            difference of modified Pettifor numbers.  The policy ranks
+            normalizer-representation pairs but does not change the geometric
+            assignment among repeated occurrences of one Wyckoff letter.
         symprec: Symmetry precision forwarded to
             :class:`~pymatgen.symmetry.analyzer.SpacegroupAnalyzer`.
             Ignored when pre-computed :class:`WyckoffData` is supplied.

@@ -7,6 +7,23 @@ from src.mod_petti import MOD_PETTI
 from src.wyckoff_match import WyckoffData, WyckoffMatch, match_wyckoff, precompute
 
 
+def _wyckoff_data(
+    elements: list[str],
+    coords: list[list[float]],
+) -> WyckoffData:
+    """Build minimal P1 data with one single-atom orbit per element."""
+    return WyckoffData(
+        spg_num=1,
+        relabeled_letters=[["a"] * len(elements)],
+        letter_key=[tuple("a" for _ in elements)],
+        repr_idx_for_relabeling=[0],
+        orbit_elements=elements,
+        orbit_atom_indices=[[i] for i in range(len(elements))],
+        orbit_repr_coords=[np.array(coord) for coord in coords],
+        frac_coords=np.array(coords),
+    )
+
+
 def _nacl_conventional() -> Structure:
     """Rock-salt NaCl conventional cell (Fm-3m, spg 225)."""
     a = 5.64
@@ -134,6 +151,45 @@ def test_match_wyckoff_self_match_zero_cost() -> None:
     assert m.cost_uniform == 0.0
     # Self-match: each struct2 atom maps back to the same-index struct1 atom.
     assert np.array_equal(m.atom_map, np.arange(len(nacl), dtype=np.int64))
+
+
+def test_match_wyckoff_repeated_letters_use_coordinate_assignment() -> None:
+    data1 = _wyckoff_data(["Na", "Cl"], [[0, 0, 0], [0.4, 0, 0]])
+    data2 = _wyckoff_data(["Cl", "Na"], [[0, 0, 0], [0.4, 0, 0]])
+
+    matches, _, _ = match_wyckoff([data1], [data2], cost="uniform")
+
+    assert len(matches) == 1
+    assert matches[0].cost_uniform == 1.0
+    assert np.array_equal(matches[0].atom_map, np.array([0, 1]))
+
+
+def test_atom_map_substitutes_struct1_elements_onto_struct2() -> None:
+    generated = Structure(
+        Lattice.cubic(3.0),
+        ["Na", "Cl"],
+        [[0, 0, 0], [0.4, 0, 0]],
+    )
+    training = Structure(
+        Lattice.cubic(3.0),
+        ["K", "Br"],
+        [[0, 0, 0], [0.4, 0, 0]],
+    )
+    match = WyckoffMatch(
+        idx1=0,
+        idx2=0,
+        cost_uniform=1.0,
+        cost_mod_petti=1.0,
+        atom_map=np.array([1, 0]),
+        repr1_idx=0,
+        repr2_idx=0,
+    )
+
+    substituted = training.copy()
+    for j2, j1 in enumerate(match.atom_map):
+        substituted.replace(j2, generated[int(j1)].specie.symbol)
+
+    assert [site.specie.symbol for site in substituted] == ["Cl", "Na"]
 
 
 def test_match_wyckoff_atom_map_is_valid_permutation() -> None:
