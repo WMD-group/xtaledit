@@ -17,15 +17,11 @@ from __future__ import annotations
 import argparse
 import gzip
 import pickle
-import sys
 from pathlib import Path
 from typing import Any
 
-# Allow importing SubstitutedEntry from the sibling script.
-sys.path.insert(0, str(Path(__file__).parent))
-from substitute_structures import SubstitutedEntry  # noqa: E402
-
 from src.energy import relax_structures
+from src.substituted_entry import SubstitutedEntry
 
 
 def _load(path: Path) -> Any:

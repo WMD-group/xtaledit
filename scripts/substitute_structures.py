@@ -23,41 +23,18 @@ import gzip
 import math
 import pickle
 from collections import defaultdict
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Literal
 
 from pymatgen.core import Structure
 
+from src import substituted_entry
 from src.config import INPUT_DIR
 from src.sm_anon import AnonMatch
 from src.wyckoff_match import WyckoffMatch
 
 GEN_PRE_DIR = INPUT_DIR / "gen" / "preprocessed"
 TRAIN_PATH = INPUT_DIR / "train" / "preprocessed" / "train.pkl.gz"
-
-
-@dataclass
-class SubstitutedEntry:
-    """Training structure with elements replaced by those of a matched gen structure.
-
-    Attributes:
-        gen_idx: Index of the generated structure in the preprocessed gen list.
-        train_idx: Index of the training structure in the preprocessed train list.
-        rank: 1-based rank of this training match among all matches for this gen
-            structure (ranked by the cost used for selection).
-        cost_uniform: Uniform substitution cost of the match (0 = identical chemistry).
-        cost_mod_petti: Modified Pettifor substitution cost of the match.
-        structure: Training structure with element types replaced by those of the
-            generated structure according to the atom mapping.
-    """
-
-    gen_idx: int
-    train_idx: int
-    rank: int
-    cost_uniform: float
-    cost_mod_petti: float
-    structure: Structure
 
 
 def _load(path: Path) -> Any:
@@ -135,7 +112,7 @@ def _top_k_entries(
     gen: list[Structure],
     train: list[Structure],
     substitute_fn: Callable[..., Structure],
-) -> list[SubstitutedEntry]:
+) -> list[substituted_entry.SubstitutedEntry]:
     """Select top-k training matches per gen structure and build SubstitutedEntry list.
 
     Args:
@@ -162,12 +139,12 @@ def _top_k_entries(
         if not math.isnan(cost(m)):
             by_gen[m.idx1].append(m)
 
-    results: list[SubstitutedEntry] = []
+    results: list[substituted_entry.SubstitutedEntry] = []
     for gen_idx in sorted(by_gen):
         ranked = sorted(by_gen[gen_idx], key=cost)[:k]
         for rank, m in enumerate(ranked, 1):
             results.append(
-                SubstitutedEntry(
+                substituted_entry.SubstitutedEntry(
                     gen_idx=m.idx1,
                     train_idx=m.idx2,
                     rank=rank,

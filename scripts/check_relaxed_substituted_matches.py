@@ -15,18 +15,14 @@ import argparse
 import ast
 import gzip
 import pickle
-import sys
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 from pymatgen.core import Structure
 
-# Allow unpickling SubstitutedEntry objects saved from the sibling script module.
-sys.path.insert(0, str(Path(__file__).parent))
-from substitute_structures import SubstitutedEntry  # noqa: E402
-
 from src.sm_fit import match_paired_structures
+from src.substituted_entry import SubstitutedEntry
 
 
 def _parse_kwarg(s: str) -> tuple[str, Any]:
