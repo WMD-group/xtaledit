@@ -65,8 +65,12 @@ def parse_args() -> argparse.Namespace:
         metavar="KEY=VALUE",
         action="append",
         default=[],
-        help="StructureMatcher constructor kwarg (repeatable). "
-        "E.g. --sm ltol=0.2 --sm stol=0.3",
+        help=(
+            "StructureMatcher constructor kwarg (repeatable). "
+            "ltol, stol, angle_tol, and scale are configurable. Anonymous "
+            "matching normalizes incompatible structural options. "
+            "E.g. --sm ltol=0.2 --sm stol=0.3"
+        ),
     )
     p.add_argument(
         "--output",

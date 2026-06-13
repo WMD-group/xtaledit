@@ -11,11 +11,10 @@ Unlike ``fit_anonymous``, this module:
 Implementation note
 -------------------
 ``StructureMatcher._anonymous_match`` rejects pairs that differ in the *number
-of distinct species*, which breaks full anonymisation.  We bypass it entirely:
-all atoms in both structures are replaced with the dummy element ``"He"`` before
-the internal ``_preprocess`` + ``_strict_match`` pipeline is called.  With a
-single species the species-count check trivially passes and there is exactly one
-permutation (He → He), so the result is a purely geometric match.
+of distinct species*, which breaks full anonymisation. We bypass it entirely
+and use ``FrameworkComparator`` with the internal ``_preprocess`` +
+``_strict_match`` pipeline. This performs purely geometric matching without
+copying every structure to replace its species.
 """
 
 from __future__ import annotations
@@ -26,13 +25,14 @@ import queue
 import sys
 import time
 import traceback
+import warnings
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 from pymatgen.core import Structure
-from pymatgen.core.structure_matcher import StructureMatcher
+from pymatgen.core.structure_matcher import FrameworkComparator, StructureMatcher
 from tqdm import tqdm
 
 from ._subst_cost import subst_cost_mod_petti, subst_cost_uniform
@@ -88,11 +88,40 @@ class AnonMatch:
         self.__dict__.update(state)
 
 
-def _anonymize(struct: Structure) -> Structure:
-    """Return a copy of *struct* with every species replaced by ``"He"``."""
-    anon = struct.copy()
-    anon.replace_species({sp: "He" for sp in struct.composition})
-    return anon
+def _anonymous_matcher_kwargs(matcher_kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Return matcher kwargs normalized for full anonymous matching."""
+    resolved = dict(matcher_kwargs)
+    required = {
+        "primitive_cell": (False, "False"),
+        "attempt_supercell": (True, "True"),
+        "allow_subset": (False, "False"),
+        "supercell_size": ("num_sites", "'num_sites'"),
+        "ignored_species": ((), "an empty sequence"),
+    }
+    for key, (supported, description) in required.items():
+        requested = resolved.get(key, supported)
+        incompatible = (
+            bool(requested) if key == "ignored_species" else requested != supported
+        )
+        if incompatible:
+            warnings.warn(
+                f"match_anonymous does not support {key}={requested!r}; "
+                f"using {description}",
+                UserWarning,
+                stacklevel=3,
+            )
+        resolved[key] = supported
+
+    comparator = resolved.get("comparator")
+    if comparator is not None and not isinstance(comparator, FrameworkComparator):
+        warnings.warn(
+            "match_anonymous only supports FrameworkComparator; "
+            "using FrameworkComparator()",
+            UserWarning,
+            stacklevel=3,
+        )
+    resolved["comparator"] = FrameworkComparator()
+    return resolved
 
 
 def _compute_atom_costs(
@@ -138,8 +167,8 @@ def _compute_atom_costs(
 
 def _match_pair(
     matcher: StructureMatcher,
-    s1_anon: Structure,
-    s2_anon: Structure,
+    s1: Structure,
+    s2: Structure,
     idx1: int,
     idx2: int,
     species1: list[str],
@@ -148,10 +177,9 @@ def _match_pair(
     """Attempt an anonymous geometric match between one pair of structures.
 
     Args:
-        matcher: Configured ``StructureMatcher`` instance.  Both structures
-            must have already been anonymised (all species set to ``"He"``).
-        s1_anon: Anonymised version of the first structure.
-        s2_anon: Anonymised version of the second structure.
+        matcher: Configured ``StructureMatcher`` using ``FrameworkComparator``.
+        s1: First structure.
+        s2: Second structure.
         idx1: Index of the first structure in the caller's list (stored in the
             returned :class:`AnonMatch` without modification).
         idx2: Index of the second structure in the caller's list.
@@ -161,7 +189,7 @@ def _match_pair(
     Returns:
         An :class:`AnonMatch` if a match was found, otherwise ``None``.
     """
-    n1, n2 = len(s1_anon), len(s2_anon)
+    n1, n2 = len(s1), len(s2)
     if n1 >= n2:
         if n1 % n2 != 0:
             return None
@@ -172,7 +200,7 @@ def _match_pair(
     # _preprocess: (optionally) Niggli-reduce, determine fu / s1_supercell,
     # rescale lattice volumes.  skip_structure_reduction=True keeps atom order.
     s1_proc, s2_proc, fu, s1_supercell = matcher._preprocess(
-        s1_anon, s2_anon, niggli=False, skip_structure_reduction=True
+        s1, s2, niggli=False, skip_structure_reduction=True
     )
 
     match = matcher._strict_match(
@@ -241,11 +269,10 @@ def _iter_struct1_matches(args: tuple[int, Structure]):
     if not compatible_ns:
         return
     assert _g_matcher is not None, "_init_worker was not called"
-    s1_anon = _anonymize(s1)
     species1 = [site.specie.symbol for site in s1]
     for n2 in compatible_ns:
-        for j, s2_anon, species2 in _g_s2_by_n[n2]:
-            m = _match_pair(_g_matcher, s1_anon, s2_anon, i, j, species1, species2)
+        for j, s2, species2 in _g_s2_by_n[n2]:
+            m = _match_pair(_g_matcher, s1, s2, i, j, species1, species2)
             if m is not None:
                 yield m
 
@@ -409,20 +436,23 @@ def match_anonymous(
         timeout_sec: Optional per-``structs1`` timeout in seconds for parallel
             matching. Timed-out structures keep matches emitted before timeout.
         **matcher_kwargs: Forwarded to the ``StructureMatcher`` constructor.
+            Full anonymous matching requires ``primitive_cell=False``,
+            ``attempt_supercell=True``, ``allow_subset=False``,
+            ``supercell_size="num_sites"``, no ignored species, and
+            ``FrameworkComparator``. Incompatible values are replaced with
+            these settings and emit ``UserWarning``.
 
     Returns:
         List of :class:`AnonMatch` objects, one per matched pair.  Order
         is deterministic only when ``n_jobs=1``; with ``n_jobs != 1`` the
         order depends on task completion order.
     """
-    # Enable supercell matching by default; callers can override with
-    # attempt_supercell=False.
-    matcher_kwargs.setdefault("attempt_supercell", True)
+    matcher_kwargs = _anonymous_matcher_kwargs(matcher_kwargs)
 
-    # Anonymise structs2 once and group by atom count for O(1) pre-filtering.
+    # Group structs2 by atom count for O(1) pre-filtering.
     s2_by_n: dict[int, list[tuple[int, Structure, list[str]]]] = defaultdict(list)
     for j, s in enumerate(structs2):
-        s2_by_n[len(s)].append((j, _anonymize(s), [site.specie.symbol for site in s]))
+        s2_by_n[len(s)].append((j, s, [site.specie.symbol for site in s]))
 
     results: list[AnonMatch] = []
 
@@ -446,11 +476,10 @@ def match_anonymous(
             if not compatible_ns:
                 continue
 
-            s1_anon = _anonymize(s1)
             species1 = [site.specie.symbol for site in s1]
             for n2 in compatible_ns:
-                for j, s2_anon, species2 in s2_by_n[n2]:
-                    m = _match_pair(matcher, s1_anon, s2_anon, i, j, species1, species2)
+                for j, s2, species2 in s2_by_n[n2]:
+                    m = _match_pair(matcher, s1, s2, i, j, species1, species2)
                     if m is not None:
                         results.append(m)
     else:

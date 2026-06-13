@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import math
 import time
+import warnings
 
 import numpy as np
+import pytest
 from pymatgen.core import Lattice, Structure
+from pymatgen.core.structure_matcher import FrameworkComparator
 
 import src.sm_anon as sm_anon
 from src.sm_anon import AnonMatch, match_anonymous
@@ -139,3 +142,82 @@ def test_match_anonymous_timeout_requires_parallel_jobs() -> None:
         assert "n_jobs != 1" in str(exc)
     else:
         raise AssertionError("Expected ValueError")
+
+
+@pytest.mark.parametrize(
+    ("matcher_kwarg", "warning_text"),
+    [
+        ({"primitive_cell": True}, "primitive_cell=True"),
+        ({"attempt_supercell": False}, "attempt_supercell=False"),
+        ({"allow_subset": True}, "allow_subset=True"),
+        ({"supercell_size": "volume"}, "supercell_size='volume'"),
+        ({"ignored_species": ["Na"]}, "ignored_species"),
+        ({"comparator": object()}, "only supports FrameworkComparator"),
+    ],
+)
+def test_match_anonymous_warns_and_normalizes_incompatible_matcher_options(
+    matcher_kwarg: dict,
+    warning_text: str,
+) -> None:
+    small = _small_structure()
+
+    with pytest.warns(UserWarning, match=warning_text):
+        matches = match_anonymous([small], [small], **matcher_kwarg)
+
+    assert len(matches) == 1
+
+
+def test_match_anonymous_accepts_supported_matcher_options_without_warning() -> None:
+    small = _small_structure()
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        matches = match_anonymous(
+            [small],
+            [small],
+            primitive_cell=False,
+            attempt_supercell=True,
+            allow_subset=False,
+            supercell_size="num_sites",
+            ignored_species=(),
+            comparator=FrameworkComparator(),
+            scale=False,
+        )
+
+    assert len(matches) == 1
+
+
+def test_match_anonymous_normalizes_disabled_supercell_matching() -> None:
+    small = _small_structure()
+    large = _large_structure_from_small()
+
+    with pytest.warns(UserWarning, match="attempt_supercell=False"):
+        matches = match_anonymous(
+            [small],
+            [large],
+            attempt_supercell=False,
+        )
+
+    assert len(matches) == 1
+    assert matches[0].fu == 2
+
+
+def test_match_anonymous_does_not_copy_structures_for_anonymization(
+    monkeypatch,
+) -> None:
+    small = _small_structure()
+    seen: list[tuple[Structure, Structure]] = []
+    original_match_pair = sm_anon._match_pair
+
+    def recording_match_pair(matcher, s1, s2, *args):
+        seen.append((s1, s2))
+        return original_match_pair(matcher, s1, s2, *args)
+
+    monkeypatch.setattr(sm_anon, "_match_pair", recording_match_pair)
+
+    matches = match_anonymous([small], [small])
+
+    assert len(matches) == 1
+    assert len(seen) == 1
+    assert seen[0][0] is small
+    assert seen[0][1] is small
