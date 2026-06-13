@@ -17,8 +17,10 @@ from notebook_constants import (
     GEN_FILE,
     METASTABLE_EHULL_MAX,
     RELAXED_SM_ANON_ENTRIES_FILE,
+    RELAXED_SM_ANON_INFOS_FILE,
     RELAXED_SM_ANON_MATCHES_FILE,
     RELAXED_WYCKOFF_ENTRIES_FILE,
+    RELAXED_WYCKOFF_INFOS_FILE,
     RELAXED_WYCKOFF_MATCHES_FILE,
     SM_ANON_MATCH_FILE,
     SM_FIT_FILE,
@@ -103,12 +105,40 @@ def load_direct_match_gen_indices(path: Path) -> set[int]:
     return set(int(i) for i in load_direct_matches(path)["gen_idx"])
 
 
-def load_relaxed_match_gen_indices(path: Path) -> set[int]:
-    """Load generated-structure indices with a relaxed substituted match."""
+def substituted_relax_info_is_complete(info: dict[str, Any] | None) -> bool:
+    """Return whether substituted relaxation produced a complete final state."""
+    return info is not None and all(
+        key in info for key in ("converged", "n_steps", "energy_per_atom_eV")
+    )
+
+
+def load_relaxed_match_gen_indices(
+    path: Path, infos_path: Path | None = None
+) -> set[int]:
+    """Load generated indices with a valid relaxed substituted match."""
     records = load_pickle_gz(path)
-    return {
-        int(record["gen_idx"]) for record in records if bool(record.get("match", False))
-    }
+    if infos_path is None:
+        prefix, marker, _ = path.name.partition("_gen_matches")
+        if not marker:
+            raise ValueError(f"{path} is not a relaxed match-record path")
+        infos_path = path.with_name(f"{prefix}_infos.pkl.gz")
+    infos = load_pickle_gz(infos_path)
+    if len(records) != len(infos):
+        raise ValueError(
+            f"{path} has {len(records)} records but {infos_path} has "
+            f"{len(infos)} relaxation infos"
+        )
+    matched_gen_indices: set[int] = set()
+    for entry_idx, (record, info) in enumerate(zip(records, infos, strict=True)):
+        if int(record["entry_idx"]) != entry_idx:
+            raise ValueError(
+                f"{path} has entry_idx={record['entry_idx']} at position {entry_idx}"
+            )
+        if bool(record.get("match", False)) and substituted_relax_info_is_complete(
+            info
+        ):
+            matched_gen_indices.add(int(record["gen_idx"]))
+    return matched_gen_indices
 
 
 def load_wyckoff_data(path: Path, expected: int) -> list[Any]:
@@ -182,6 +212,8 @@ def required_paths(
         "top3_wyckoff": result_dir / TOP3_WYCKOFF_FILE,
         "relaxed_sm_anon_entries": result_dir / RELAXED_SM_ANON_ENTRIES_FILE,
         "relaxed_wyckoff_entries": result_dir / RELAXED_WYCKOFF_ENTRIES_FILE,
+        "relaxed_sm_anon_infos": result_dir / RELAXED_SM_ANON_INFOS_FILE,
+        "relaxed_wyckoff_infos": result_dir / RELAXED_WYCKOFF_INFOS_FILE,
         "relaxed_sm_anon_matches": result_dir / RELAXED_SM_ANON_MATCHES_FILE,
         "relaxed_wyckoff_matches": result_dir / RELAXED_WYCKOFF_MATCHES_FILE,
         "wyckoff_repr": result_dir / WYCKOFF_REPR_FILE,
@@ -236,8 +268,12 @@ def classify_model(
     )
     smact_validity = load_smact_validity(paths["smact_validity"], n_generated)
     direct = load_direct_match_gen_indices(paths["direct_sm"])
-    relaxed_sm_anon = load_relaxed_match_gen_indices(paths["relaxed_sm_anon_matches"])
-    relaxed_wyckoff = load_relaxed_match_gen_indices(paths["relaxed_wyckoff_matches"])
+    relaxed_sm_anon = load_relaxed_match_gen_indices(
+        paths["relaxed_sm_anon_matches"], paths.get("relaxed_sm_anon_infos")
+    )
+    relaxed_wyckoff = load_relaxed_match_gen_indices(
+        paths["relaxed_wyckoff_matches"], paths.get("relaxed_wyckoff_infos")
+    )
     wyckoff_data = (
         load_wyckoff_data(paths["wyckoff_repr"], n_generated)
         if include_crystal_system
@@ -308,6 +344,7 @@ def entries_to_frame(
     records: list[dict[str, Any]],
     source: str,
     *,
+    infos: list[dict[str, Any] | None] | None = None,
     include_structure: bool = False,
     add_match_label: bool = False,
 ) -> pd.DataFrame:
@@ -315,6 +352,10 @@ def entries_to_frame(
     if len(entries) != len(records):
         raise ValueError(
             f"{source}: entries length {len(entries)} != records length {len(records)}"
+        )
+    if infos is not None and len(entries) != len(infos):
+        raise ValueError(
+            f"{source}: entries length {len(entries)} != infos length {len(infos)}"
         )
 
     rows: list[dict[str, Any]] = []
@@ -331,6 +372,10 @@ def entries_to_frame(
             if not np.isclose(float(getattr(entry, attr)), float(record[attr])):
                 raise ValueError(f"{source}: {attr} mismatch at entry {entry_idx}")
 
+        info = infos[entry_idx] if infos is not None else None
+        relax_failed = infos is not None and not substituted_relax_info_is_complete(
+            info
+        )
         row = {
             "source": source,
             "source_order": SOURCE_ORDER.index(source),
@@ -340,8 +385,15 @@ def entries_to_frame(
             "rank": int(entry.rank),
             "cost_uniform": float(entry.cost_uniform),
             "cost_mod_petti": float(entry.cost_mod_petti),
-            "match": bool(record["match"]),
+            "match": bool(record["match"]) and not relax_failed,
         }
+        if infos is not None:
+            row["relax_failed"] = relax_failed
+            row["relax_converged"] = (
+                bool(info["converged"])
+                if not relax_failed and info is not None
+                else False
+            )
         if include_structure:
             row["relaxed_substituted_structure"] = entry.structure
         rows.append(row)

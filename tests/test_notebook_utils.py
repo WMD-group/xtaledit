@@ -28,6 +28,7 @@ from notebook_utils import (  # noqa: E402
     load_smact_validity,
     required_paths,
     simple_category,
+    substituted_relax_info_is_complete,
     validate_1d_length,
 )
 
@@ -72,16 +73,29 @@ def test_loaders_validate_shapes(tmp_path: Path) -> None:
         np.array([True, False, False]),
     )
 
-    relaxed_path = tmp_path / "relaxed.pkl.gz"
+    relaxed_path = tmp_path / "substituted_relaxed_gen_matches.pkl.gz"
+    relaxed_infos_path = tmp_path / "substituted_relaxed_infos.pkl.gz"
     dump_pickle_gz(
         relaxed_path,
         [
-            {"gen_idx": 0, "match": True},
-            {"gen_idx": 1, "match": False},
-            {"gen_idx": 2},
+            {"entry_idx": 0, "gen_idx": 0, "match": True},
+            {"entry_idx": 1, "gen_idx": 1, "match": True},
+            {"entry_idx": 2, "gen_idx": 2, "match": True},
         ],
     )
-    assert load_relaxed_match_gen_indices(relaxed_path) == {0}
+    dump_pickle_gz(
+        relaxed_infos_path,
+        [
+            {"converged": True, "n_steps": 10, "energy_per_atom_eV": -1.0},
+            {"converged": False, "n_steps": 1000, "energy_per_atom_eV": -2.0},
+            None,
+        ],
+    )
+    assert load_relaxed_match_gen_indices(relaxed_path) == {0, 1}
+    assert substituted_relax_info_is_complete(
+        {"converged": False, "n_steps": 1000, "energy_per_atom_eV": -2.0}
+    )
+    assert not substituted_relax_info_is_complete({"converged": True})
 
 
 def test_required_paths_and_missing_check(tmp_path: Path) -> None:
@@ -151,11 +165,33 @@ def test_classify_model_uses_shared_category_logic(tmp_path: Path) -> None:
     np.savez(paths["direct_sm"], matches=np.array([[0, 10]]))
     dump_pickle_gz(
         paths["relaxed_sm_anon_matches"],
-        [{"gen_idx": 1, "match": True}, {"gen_idx": 2, "match": True}],
+        [
+            {"entry_idx": 0, "gen_idx": 1, "match": True},
+            {"entry_idx": 1, "gen_idx": 2, "match": True},
+            {"entry_idx": 2, "gen_idx": 4, "match": True},
+        ],
+    )
+    dump_pickle_gz(
+        paths["relaxed_sm_anon_infos"],
+        [
+            {"converged": False, "n_steps": 1000, "energy_per_atom_eV": -1.0},
+            {"converged": True, "n_steps": 10, "energy_per_atom_eV": -1.0},
+            None,
+        ],
     )
     dump_pickle_gz(
         paths["relaxed_wyckoff_matches"],
-        [{"gen_idx": 1, "match": True}, {"gen_idx": 3, "match": True}],
+        [
+            {"entry_idx": 0, "gen_idx": 1, "match": True},
+            {"entry_idx": 1, "gen_idx": 3, "match": True},
+        ],
+    )
+    dump_pickle_gz(
+        paths["relaxed_wyckoff_infos"],
+        [
+            {"converged": True, "n_steps": 10, "energy_per_atom_eV": -1.0},
+            {"converged": True, "n_steps": 10, "energy_per_atom_eV": -1.0},
+        ],
     )
     dump_pickle_gz(
         paths["wyckoff_repr"],
@@ -223,6 +259,7 @@ def test_entries_to_frame_options() -> None:
         entries,
         records,
         "anon",
+        infos=[{"converged": False, "n_steps": 1000, "energy_per_atom_eV": -1.0}],
         include_structure=True,
         add_match_label=True,
     )
@@ -230,7 +267,38 @@ def test_entries_to_frame_options() -> None:
     assert frame.loc[0, "source_order"] == 0
     assert frame.loc[0, "relaxed_substituted_structure"] == "structure"
     assert frame.loc[0, "match_label"] == "relaxed match"
+    assert not frame.loc[0, "relax_failed"]
+    assert not frame.loc[0, "relax_converged"]
+
+    with pytest.raises(ValueError, match="infos length"):
+        entries_to_frame(entries, records, "anon", infos=[])
 
     records[0]["rank"] = 2
     with pytest.raises(ValueError, match="rank mismatch"):
         entries_to_frame(entries, records, "anon")
+
+
+def test_entries_to_frame_excludes_hard_relaxation_failures() -> None:
+    entry = SimpleNamespace(
+        gen_idx=0,
+        train_idx=10,
+        rank=1,
+        cost_uniform=0.1,
+        cost_mod_petti=0.2,
+        structure="structure",
+    )
+    record = {
+        "entry_idx": 0,
+        "gen_idx": 0,
+        "train_idx": 10,
+        "rank": 1,
+        "cost_uniform": 0.1,
+        "cost_mod_petti": 0.2,
+        "match": True,
+    }
+
+    frame = entries_to_frame([entry], [record], "anon", infos=[None])
+
+    assert not frame.loc[0, "match"]
+    assert frame.loc[0, "relax_failed"]
+    assert not frame.loc[0, "relax_converged"]

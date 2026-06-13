@@ -44,6 +44,10 @@ RELAXED_SM_ANON_ENTRIES_FILE = "substituted_relaxed_niggli_top3_sm_anon.pkl.gz"
 RELAXED_WYCKOFF_ENTRIES_FILE = (
     "substituted_relaxed_niggli_top3_wyckoff_match_s=0.01_c=mod_petti.pkl.gz"
 )
+RELAXED_SM_ANON_INFOS_FILE = "substituted_relaxed_niggli_top3_sm_anon_infos.pkl.gz"
+RELAXED_WYCKOFF_INFOS_FILE = (
+    "substituted_relaxed_niggli_top3_wyckoff_match_s=0.01_c=mod_petti_infos.pkl.gz"
+)
 RELAXED_SM_ANON_MATCHES_FILE = (
     "substituted_relaxed_niggli_top3_sm_anon_gen_matches.pkl.gz"
 )

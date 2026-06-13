@@ -25,6 +25,8 @@ from pymatgen.entries.compatibility import MaterialsProject2020Compatibility
 from pymatgen.io.ase import AseAtomsAdaptor
 from tqdm import tqdm
 
+MACE_MODEL = "medium-mpa-0"
+
 
 def _relax_one(
     structure: Structure,
@@ -337,8 +339,7 @@ def _gpu_worker(
         List of ``(relaxed_structure, info_dict)`` pairs, one per input structure.
     """
     structures, device, fmax, max_steps, forward_batch_size = args
-    model_path = str(Path.home() / ".cache" / "mace" / "macemp0mediummodel")
-    base_calc = mace_mp(model=model_path, default_dtype="float64", device=device)
+    base_calc = mace_mp(model=MACE_MODEL, default_dtype="float64", device=device)
     results = _relax_batch(
         structures,
         base_calc,
@@ -410,7 +411,7 @@ def relax_structures(
         return relaxed_structures, infos
 
     # Sequential path: single GPU or CPU.
-    base_calc = mace_mp(model="medium-mpa-0", default_dtype="float64", device=device)
+    base_calc = mace_mp(model=MACE_MODEL, default_dtype="float64", device=device)
     results = _relax_batch(
         structures,
         base_calc,
