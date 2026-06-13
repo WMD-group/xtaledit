@@ -44,6 +44,7 @@ from tqdm import tqdm
 
 from src.config import INPUT_DIR
 from src.energy import build_phase_diagram, compute_ehulls, relax_structures
+from src.yaml_config import get_path, load_yaml_config
 
 load_dotenv()
 
@@ -215,15 +216,14 @@ def preprocess_train() -> None:
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
-        "--gen-file",
+        "config",
         type=Path,
-        default=None,
-        help=(
-            "Generated .pkl.gz file to preprocess. "
-            "If omitted, all files in input/gen/raw/ are processed."
-        ),
+        metavar="CONFIG.yaml",
+        help="YAML configuration file.",
     )
-    return p.parse_args()
+    cli_args = p.parse_args()
+    config = load_yaml_config(cli_args.config, allowed_keys={"gen_file"})
+    return argparse.Namespace(gen_file=get_path(config, "gen_file", default=None))
 
 
 def main() -> None:

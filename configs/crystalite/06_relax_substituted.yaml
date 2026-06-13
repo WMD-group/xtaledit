@@ -1,0 +1,8 @@
+paths:
+  - results/raw/crystalite/substituted_top3_sm_anon.pkl.gz
+  - results/raw/crystalite/substituted_top3_wyckoff_match_s=0.01_c=mod_petti.pkl.gz
+device: cuda
+fmax: 0.001
+max_steps: 1000
+forward_batch_size: 64
+force: false

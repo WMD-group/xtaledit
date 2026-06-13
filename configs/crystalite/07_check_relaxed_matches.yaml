@@ -1,0 +1,18 @@
+paths:
+  - results/raw/crystalite/substituted_relaxed_niggli_top3_sm_anon.pkl.gz
+  - results/raw/crystalite/substituted_relaxed_niggli_top3_wyckoff_match_s=0.01_c=mod_petti.pkl.gz
+gen_path: input/gen/preprocessed/crystalite/relaxed_niggli.pkl.gz
+structure_matcher:
+  ltol: 0.2
+  stol: 0.3
+  angle_tol: 5.0
+  primitive_cell: true
+  scale: false
+  attempt_supercell: false
+  allow_subset: false
+  supercell_size: num_sites
+  ignored_species: []
+fit:
+  symmetric: false
+  skip_structure_reduction: false
+force: false

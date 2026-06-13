@@ -8,12 +8,12 @@ generated structure based on the stored atom mapping.
 Sources:
     input/gen/preprocessed/<model>/relaxed_niggli.pkl.gz  -> list[Structure]
     input/train/preprocessed/train.pkl.gz                 -> list[Structure]
-    --sm-anon-input                                        -> list[AnonMatch]
-    --wyckoff-input                                        -> list[WyckoffMatch]
+    sm_anon_input                                          -> list[AnonMatch]
+    wyckoff_input                                          -> list[WyckoffMatch]
 
 Outputs:
-    --sm-anon-output  -> list[SubstitutedEntry]
-    --wyckoff-output  -> list[SubstitutedEntry]
+    sm_anon_output  -> list[SubstitutedEntry]
+    wyckoff_output  -> list[SubstitutedEntry]
 """
 
 from __future__ import annotations
@@ -32,6 +32,13 @@ from src import substituted_entry
 from src.config import INPUT_DIR
 from src.sm_anon import AnonMatch
 from src.wyckoff_match import WyckoffMatch
+from src.yaml_config import (
+    get_bool,
+    get_int,
+    get_path,
+    get_string,
+    load_yaml_config,
+)
 
 GEN_PRE_DIR = INPUT_DIR / "gen" / "preprocessed"
 TRAIN_PATH = INPUT_DIR / "train" / "preprocessed" / "train.pkl.gz"
@@ -159,57 +166,42 @@ def _top_k_entries(
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
-        "--model",
-        required=True,
-        help="Model name (subdirectory of input/gen/preprocessed/).",
-    )
-    p.add_argument(
-        "--top-k",
-        type=int,
-        default=5,
-        metavar="K",
-        help="Number of training matches to keep per generated structure (default: 5).",
-    )
-    p.add_argument(
-        "--cost",
-        choices=["uniform", "mod_petti"],
-        default="uniform",
-        help="Substitution cost used to rank and select matches (default: uniform).",
-    )
-    p.add_argument(
-        "--sm-anon-input",
+        "config",
         type=Path,
-        default=None,
-        metavar="PATH",
-        help="Path to the anonymous-match file (sm_anon.pkl.gz).",
+        metavar="CONFIG.yaml",
+        help="YAML configuration file.",
     )
-    p.add_argument(
-        "--sm-anon-output",
-        type=Path,
-        default=None,
-        metavar="PATH",
-        help="Output path for substituted entries derived from anonymous matches.",
+    cli_args = p.parse_args()
+    config = load_yaml_config(
+        cli_args.config,
+        allowed_keys={
+            "model",
+            "top_k",
+            "cost",
+            "sm_anon_input",
+            "sm_anon_output",
+            "wyckoff_input",
+            "wyckoff_output",
+            "force",
+        },
+        required_keys={"model"},
     )
-    p.add_argument(
-        "--wyckoff-input",
-        type=Path,
-        default=None,
-        metavar="PATH",
-        help="Path to the Wyckoff-match file (wyckoff_match_*.pkl.gz).",
+    top_k = get_int(config, "top_k", default=5)
+    if top_k <= 0:
+        raise SystemExit("error: config key 'top_k' must be positive")
+    cost = get_string(config, "cost", default="uniform")
+    if cost not in {"uniform", "mod_petti"}:
+        raise SystemExit("error: config key 'cost' must be 'uniform' or 'mod_petti'")
+    return argparse.Namespace(
+        model=get_string(config, "model"),
+        top_k=top_k,
+        cost=cost,
+        sm_anon_input=get_path(config, "sm_anon_input", default=None),
+        sm_anon_output=get_path(config, "sm_anon_output", default=None),
+        wyckoff_input=get_path(config, "wyckoff_input", default=None),
+        wyckoff_output=get_path(config, "wyckoff_output", default=None),
+        force=get_bool(config, "force", default=False),
     )
-    p.add_argument(
-        "--wyckoff-output",
-        type=Path,
-        default=None,
-        metavar="PATH",
-        help="Output path for substituted entries derived from Wyckoff matches.",
-    )
-    p.add_argument(
-        "--force",
-        action="store_true",
-        help="Overwrite existing output files.",
-    )
-    return p.parse_args()
 
 
 def _validate_args(args: argparse.Namespace) -> None:
@@ -217,16 +209,18 @@ def _validate_args(args: argparse.Namespace) -> None:
     wyck_in, wyck_out = args.wyckoff_input, args.wyckoff_output
     if (anon_in is None) != (anon_out is None):
         raise SystemExit(
-            "error: --sm-anon-input and --sm-anon-output must be specified together"
+            "error: config keys 'sm_anon_input' and 'sm_anon_output' "
+            "must be specified together"
         )
     if (wyck_in is None) != (wyck_out is None):
         raise SystemExit(
-            "error: --wyckoff-input and --wyckoff-output must be specified together"
+            "error: config keys 'wyckoff_input' and 'wyckoff_output' "
+            "must be specified together"
         )
     if anon_in is None and wyck_in is None:
         raise SystemExit(
-            "error: at least one source pair (--sm-anon-input/output or "
-            "--wyckoff-input/output) must be provided"
+            "error: at least one input/output pair for anonymous or Wyckoff "
+            "matches must be configured"
         )
 
 
@@ -254,7 +248,7 @@ def main() -> None:
         out = args.sm_anon_output
         assert out is not None
         if out.exists() and not args.force:
-            print(f"sm_anon: output exists at {out}, skipping (--force to overwrite)")
+            print(f"sm_anon: output exists at {out}, skipping (set force: true)")
         else:
             print(f"Loading anonymous matches from {args.sm_anon_input}")
             anon_matches: list[AnonMatch] = _load(args.sm_anon_input)
@@ -269,7 +263,7 @@ def main() -> None:
         out = args.wyckoff_output
         assert out is not None
         if out.exists() and not args.force:
-            print(f"wyckoff: output exists at {out}, skipping (--force to overwrite)")
+            print(f"wyckoff: output exists at {out}, skipping (set force: true)")
         else:
             print(f"Loading Wyckoff matches from {args.wyckoff_input}")
             wyck_matches: list[WyckoffMatch] = _load(args.wyckoff_input)

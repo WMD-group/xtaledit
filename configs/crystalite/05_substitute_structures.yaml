@@ -1,0 +1,8 @@
+model: crystalite
+top_k: 3
+cost: mod_petti
+sm_anon_input: results/raw/crystalite/sm_anon.pkl.gz
+sm_anon_output: results/raw/crystalite/substituted_top3_sm_anon.pkl.gz
+wyckoff_input: results/raw/crystalite/wyckoff_match_s=0.01_c=mod_petti.pkl.gz
+wyckoff_output: results/raw/crystalite/substituted_top3_wyckoff_match_s=0.01_c=mod_petti.pkl.gz
+force: false

@@ -29,6 +29,7 @@ from typing import Any
 
 from src.config import INPUT_DIR, RAW_RESULTS_DIR
 from src.wyckoff_match import WyckoffData, match_wyckoff
+from src.yaml_config import get_float, get_string, load_yaml_config
 
 GEN_PRE_DIR = INPUT_DIR / "gen" / "preprocessed"
 TRAIN_PATH = INPUT_DIR / "train" / "preprocessed" / "train.pkl.gz"
@@ -47,24 +48,27 @@ def _save(obj: Any, path: Path) -> None:
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
-        "--model",
-        default=None,
-        help="Model name (subdirectory of input/gen/preprocessed/). "
-        "If omitted, all models are processed.",
+        "config",
+        type=Path,
+        metavar="CONFIG.yaml",
+        help="YAML configuration file.",
     )
-    p.add_argument(
-        "--cost",
-        choices=["uniform", "mod_petti"],
-        default="uniform",
-        help="Element substitution cost policy (default: uniform).",
+    cli_args = p.parse_args()
+    config = load_yaml_config(
+        cli_args.config,
+        allowed_keys={"model", "cost", "symprec"},
     )
-    p.add_argument(
-        "--symprec",
-        type=float,
-        default=0.1,
-        help="Symmetry precision for SpacegroupAnalyzer (default: 0.1).",
+    cost = get_string(config, "cost", default="uniform")
+    if cost not in {"uniform", "mod_petti"}:
+        raise SystemExit("error: config key 'cost' must be 'uniform' or 'mod_petti'")
+    symprec = get_float(config, "symprec", default=0.1)
+    if symprec <= 0:
+        raise SystemExit("error: config key 'symprec' must be positive")
+    return argparse.Namespace(
+        model=get_string(config, "model", default=None),
+        cost=cost,
+        symprec=symprec,
     )
-    return p.parse_args()
 
 
 def main() -> None:

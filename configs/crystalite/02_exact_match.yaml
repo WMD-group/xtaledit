@@ -1,0 +1,15 @@
+model: crystalite
+structure_matcher:
+  ltol: 0.2
+  stol: 0.3
+  angle_tol: 5.0
+  primitive_cell: false
+  scale: false
+  attempt_supercell: true
+  allow_subset: false
+  supercell_size: num_sites
+  ignored_species: []
+fit:
+  symmetric: false
+  skip_structure_reduction: true
+output: sm_fit

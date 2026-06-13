@@ -17,7 +17,7 @@ ruff check --fix .
 ruff format .
 
 # Preprocess structures (primitive + Niggli reduction)
-python scripts/preprocess.py
+python scripts/preprocess.py configs/crystalite/01_preprocess.yaml
 
 # Tests
 pytest

@@ -19,6 +19,7 @@ dependencies = [
     "ase",
     "mp-api",
     "python-dotenv",
+    "pyyaml>=6.0",
     "smact",
     "tqdm>=4.0",
 ]

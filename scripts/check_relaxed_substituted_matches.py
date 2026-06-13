@@ -1,7 +1,7 @@
 """Check relaxed substituted structures against their source generated structures.
 
 Sources:
-    --gen-path PATH                         -> list[Structure]
+    gen_path                                -> list[Structure]
     substituted_relaxed_*.pkl.gz            -> list[SubstitutedEntry]
 
 Outputs:
@@ -12,7 +12,6 @@ Outputs:
 from __future__ import annotations
 
 import argparse
-import ast
 import gzip
 import pickle
 from pathlib import Path
@@ -23,18 +22,14 @@ from pymatgen.core import Structure
 
 from src.sm_fit import match_paired_structures
 from src.substituted_entry import SubstitutedEntry
-
-
-def _parse_kwarg(s: str) -> tuple[str, Any]:
-    """Parse ``KEY=VALUE`` into ``(key, value)`` via ``ast.literal_eval``."""
-    if "=" not in s:
-        raise argparse.ArgumentTypeError(f"Expected KEY=VALUE, got: {s!r}")
-    key, _, raw = s.partition("=")
-    try:
-        value = ast.literal_eval(raw)
-    except (ValueError, SyntaxError):
-        value = raw
-    return key.strip(), value
+from src.yaml_config import (
+    get_bool,
+    get_mapping,
+    get_path,
+    get_paths,
+    get_string,
+    load_yaml_config,
+)
 
 
 def _load(path: Path) -> Any:
@@ -69,7 +64,7 @@ def _validate_gen_indices(
     if bad:
         raise SystemExit(
             "error: substituted entries reference generated structure indices outside "
-            f"--gen-path range 0..{len(gen) - 1}; first invalid index is {bad[0]}"
+            f"gen_path range 0..{len(gen) - 1}; first invalid index is {bad[0]}"
         )
 
 
@@ -101,9 +96,7 @@ def process_file(
     """Check one relaxed substituted entries file and write match records."""
     out_path = derive_output_path(path, args.output)
     if out_path.exists() and not args.force:
-        print(
-            f"{path.name}: output exists at {out_path}, skipping (--force to overwrite)"
-        )
+        print(f"{path.name}: output exists at {out_path}, skipping (set force: true)")
         return
 
     print(f"Loading substituted entries from {path}")
@@ -133,54 +126,40 @@ def process_file(
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
-        "paths",
-        nargs="+",
+        "config",
         type=Path,
-        metavar="PATH",
-        help="One or more substituted_relaxed_*.pkl.gz files to check.",
+        metavar="CONFIG.yaml",
+        help="YAML configuration file.",
     )
-    p.add_argument(
-        "--gen-path",
-        required=True,
-        type=Path,
-        metavar="PATH",
-        help="Path to the generated structures pickle used to build substitutions.",
+    cli_args = p.parse_args()
+    config = load_yaml_config(
+        cli_args.config,
+        allowed_keys={
+            "paths",
+            "gen_path",
+            "structure_matcher",
+            "fit",
+            "output",
+            "force",
+        },
+        required_keys={"paths", "gen_path"},
     )
-    p.add_argument(
-        "--sm",
-        metavar="KEY=VALUE",
-        action="append",
-        default=[],
-        help="StructureMatcher constructor kwarg (repeatable).",
+    return argparse.Namespace(
+        paths=get_paths(config, "paths"),
+        gen_path=get_path(config, "gen_path"),
+        matcher_kwargs=get_mapping(config, "structure_matcher", default={}),
+        fit_kwargs=get_mapping(config, "fit", default={}),
+        output=get_string(config, "output", default=None),
+        force=get_bool(config, "force", default=False),
     )
-    p.add_argument(
-        "--fit",
-        metavar="KEY=VALUE",
-        action="append",
-        default=[],
-        help="StructureMatcher.fit kwarg (repeatable).",
-    )
-    p.add_argument(
-        "--output",
-        metavar="STEM",
-        help=(
-            "Output filename stem (writes <input-dir>/<STEM>.pkl.gz). "
-            "Only valid with one input path. If omitted, output is derived from "
-            "the input filename."
-        ),
-    )
-    p.add_argument(
-        "--force",
-        action="store_true",
-        help="Overwrite existing output files.",
-    )
-    return p.parse_args()
 
 
 def main() -> None:
     args = parse_args()
     if args.output is not None and len(args.paths) > 1:
-        raise SystemExit("error: --output can only be used with one input path")
+        raise SystemExit(
+            "error: config key 'output' can only be used with one input path"
+        )
     if not args.gen_path.exists():
         raise SystemExit(f"error: generated structures not found: {args.gen_path}")
     for path in args.paths:
@@ -191,11 +170,8 @@ def main() -> None:
     gen: list[Structure] = _load(args.gen_path)
     print(f"  {len(gen):,} generated structures")
 
-    matcher_kwargs: dict[str, Any] = dict(_parse_kwarg(kv) for kv in args.sm)
-    fit_kwargs: dict[str, Any] = dict(_parse_kwarg(kv) for kv in args.fit)
-
     for path in args.paths:
-        process_file(path, gen, args, matcher_kwargs, fit_kwargs)
+        process_file(path, gen, args, args.matcher_kwargs, args.fit_kwargs)
 
 
 if __name__ == "__main__":

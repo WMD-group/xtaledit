@@ -33,7 +33,7 @@ rtk ruff format .
 rtk pytest
 
 # Preprocess structures: primitive + Niggli reduction
-rtk python scripts/preprocess.py
+rtk python scripts/preprocess.py configs/crystalite/01_preprocess.yaml
 
 # Install pre-commit hooks once per clone
 rtk pre-commit install

@@ -17,7 +17,6 @@ Already-existing output files are skipped.
 from __future__ import annotations
 
 import argparse
-import ast
 import gzip
 import pickle
 from pathlib import Path
@@ -25,21 +24,16 @@ from typing import Any
 
 from src.config import INPUT_DIR, RAW_RESULTS_DIR
 from src.sm_anon import match_anonymous
+from src.yaml_config import (
+    get_float,
+    get_int,
+    get_mapping,
+    get_string,
+    load_yaml_config,
+)
 
 GEN_PRE_DIR = INPUT_DIR / "gen" / "preprocessed"
 TRAIN_PATH = INPUT_DIR / "train" / "preprocessed" / "train.pkl.gz"
-
-
-def _parse_kwarg(s: str) -> tuple[str, Any]:
-    """Parse ``KEY=VALUE`` into ``(key, value)`` via ``ast.literal_eval``."""
-    if "=" not in s:
-        raise argparse.ArgumentTypeError(f"Expected KEY=VALUE, got: {s!r}")
-    key, _, raw = s.partition("=")
-    try:
-        value = ast.literal_eval(raw)
-    except (ValueError, SyntaxError):
-        value = raw
-    return key.strip(), value
 
 
 def _load(path: Path) -> Any:
@@ -55,51 +49,35 @@ def _save(obj: Any, path: Path) -> None:
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
-        "--model",
-        default=None,
-        help="Model name (subdirectory of input/gen/preprocessed/). "
-        "If omitted, all models are processed.",
+        "config",
+        type=Path,
+        metavar="CONFIG.yaml",
+        help="YAML configuration file.",
     )
-    p.add_argument(
-        "--sm",
-        metavar="KEY=VALUE",
-        action="append",
-        default=[],
-        help=(
-            "StructureMatcher constructor kwarg (repeatable). "
-            "ltol, stol, angle_tol, and scale are configurable. Anonymous "
-            "matching normalizes incompatible structural options. "
-            "E.g. --sm ltol=0.2 --sm stol=0.3"
-        ),
+    cli_args = p.parse_args()
+    config = load_yaml_config(
+        cli_args.config,
+        allowed_keys={
+            "model",
+            "structure_matcher",
+            "output",
+            "jobs",
+            "timeout_sec",
+        },
     )
-    p.add_argument(
-        "--output",
-        default="sm_anon",
-        help=(
-            "Output filename stem "
-            "(default: sm_anon → results/raw/<model>/sm_anon.pkl.gz)."
-        ),
+    jobs = get_int(config, "jobs", default=1)
+    if jobs == 0 or jobs < -1:
+        raise SystemExit("error: config key 'jobs' must be -1 or a positive integer")
+    timeout_sec = get_float(config, "timeout_sec", default=3600.0)
+    if timeout_sec < 0:
+        raise SystemExit("error: config key 'timeout_sec' must be non-negative")
+    return argparse.Namespace(
+        model=get_string(config, "model", default=None),
+        matcher_kwargs=get_mapping(config, "structure_matcher", default={}),
+        output=get_string(config, "output", default="sm_anon"),
+        jobs=jobs,
+        timeout_sec=timeout_sec,
     )
-    p.add_argument(
-        "--jobs",
-        type=int,
-        default=1,
-        metavar="N",
-        help=(
-            "Number of parallel worker processes (default: 1). "
-            "Pass -1 to use max(1, cpu_count // 3) workers."
-        ),
-    )
-    p.add_argument(
-        "--timeout-sec",
-        type=float,
-        default=3600.0,
-        help=(
-            "Per-generated-structure timeout in seconds for parallel matching "
-            "when --jobs is not 1 (default: 3600). Pass 0 to disable."
-        ),
-    )
-    return p.parse_args()
 
 
 def main() -> None:
@@ -124,8 +102,6 @@ def main() -> None:
     train = _load(TRAIN_PATH)
     print(f"Loaded {len(train):,} training structures")
 
-    matcher_kwargs: dict[str, Any] = dict(_parse_kwarg(kv) for kv in args.sm)
-
     for gen_path in gen_files:
         stem = gen_path.parent.name
         out_path = RAW_RESULTS_DIR / stem / f"{args.output}.pkl.gz"
@@ -147,7 +123,7 @@ def main() -> None:
             train,
             n_jobs=args.jobs,
             timeout_sec=timeout_sec,
-            **matcher_kwargs,
+            **args.matcher_kwargs,
         )
 
         out_path.parent.mkdir(parents=True, exist_ok=True)

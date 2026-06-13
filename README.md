@@ -14,4 +14,14 @@ Each AI-generated structure is assigned to one of three categories:
 
 ## Setup and usage
 
-See [CLAUDE.md](CLAUDE.md) for environment setup, commands, and code style.
+Scripts take one YAML configuration path:
+
+```bash
+python scripts/exact_match.py configs/crystalite/02_exact_match.yaml
+```
+
+The ordered files in `configs/crystalite/` reproduce the Crystalite pipeline
+outputs in `results/raw/crystalite/`. Paths in configuration files are resolved
+relative to the repository root.
+
+See [AGENTS.md](AGENTS.md) for environment setup, commands, and code style.

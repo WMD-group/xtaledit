@@ -18,7 +18,6 @@ Already-existing output files are skipped.
 from __future__ import annotations
 
 import argparse
-import ast
 import gzip
 import pickle
 from pathlib import Path
@@ -28,21 +27,10 @@ import numpy as np
 
 from src.config import INPUT_DIR, RAW_RESULTS_DIR
 from src.sm_fit import match_structures
+from src.yaml_config import get_mapping, get_string, load_yaml_config
 
 GEN_PRE_DIR = INPUT_DIR / "gen" / "preprocessed"
 TRAIN_PATH = INPUT_DIR / "train" / "preprocessed" / "train.pkl.gz"
-
-
-def _parse_kwarg(s: str) -> tuple[str, Any]:
-    """Parse ``KEY=VALUE`` into ``(key, value)`` via ``ast.literal_eval``."""
-    if "=" not in s:
-        raise argparse.ArgumentTypeError(f"Expected KEY=VALUE, got: {s!r}")
-    key, _, raw = s.partition("=")
-    try:
-        value = ast.literal_eval(raw)
-    except (ValueError, SyntaxError):
-        value = raw
-    return key.strip(), value
 
 
 def _load(path: Path) -> Any:
@@ -53,35 +41,22 @@ def _load(path: Path) -> Any:
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
-        "--model",
-        default=None,
-        help="Model name (subdirectory of input/gen/preprocessed/). "
-        "If omitted, all models are processed.",
+        "config",
+        type=Path,
+        metavar="CONFIG.yaml",
+        help="YAML configuration file.",
     )
-    p.add_argument(
-        "--sm",
-        metavar="KEY=VALUE",
-        action="append",
-        default=[],
-        help="StructureMatcher constructor kwarg (repeatable). "
-        "E.g. --sm ltol=0.2 --sm primitive_cell=False",
+    cli_args = p.parse_args()
+    config = load_yaml_config(
+        cli_args.config,
+        allowed_keys={"model", "structure_matcher", "fit", "output"},
     )
-    p.add_argument(
-        "--fit",
-        metavar="KEY=VALUE",
-        action="append",
-        default=[],
-        help="StructureMatcher.fit kwarg (repeatable). "
-        "E.g. --fit symmetric=True --fit skip_structure_reduction=False",
+    return argparse.Namespace(
+        model=get_string(config, "model", default=None),
+        matcher_kwargs=get_mapping(config, "structure_matcher", default={}),
+        fit_kwargs=get_mapping(config, "fit", default={}),
+        output=get_string(config, "output", default="sm_fit"),
     )
-    p.add_argument(
-        "--output",
-        default="sm_fit",
-        help=(
-            "Output filename stem (default: sm_fit → results/raw/<model>/sm_fit.npz)."
-        ),
-    )
-    return p.parse_args()
 
 
 def main() -> None:
@@ -106,9 +81,6 @@ def main() -> None:
     train = _load(TRAIN_PATH)
     print(f"Loaded {len(train):,} training structures")
 
-    matcher_kwargs: dict[str, Any] = dict(_parse_kwarg(kv) for kv in args.sm)
-    fit_kwargs: dict[str, Any] = dict(_parse_kwarg(kv) for kv in args.fit)
-
     for gen_path in gen_files:
         stem = gen_path.parent.name
         out_path = RAW_RESULTS_DIR / stem / f"{args.output}.npz"
@@ -125,8 +97,8 @@ def main() -> None:
         matches = match_structures(
             gen,
             train,
-            fit_kwargs=fit_kwargs or None,
-            **matcher_kwargs,
+            fit_kwargs=args.fit_kwargs or None,
+            **args.matcher_kwargs,
         )
 
         out_path.parent.mkdir(parents=True, exist_ok=True)

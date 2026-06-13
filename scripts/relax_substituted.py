@@ -22,6 +22,14 @@ from typing import Any
 
 from src.energy import relax_structures
 from src.substituted_entry import SubstitutedEntry
+from src.yaml_config import (
+    get_bool,
+    get_float,
+    get_int,
+    get_paths,
+    get_string,
+    load_yaml_config,
+)
 
 
 def _load(path: Path) -> Any:
@@ -69,12 +77,12 @@ def process_file(path: Path, args: argparse.Namespace) -> None:
 
     Args:
         path: Path to a ``substituted_*.pkl.gz`` file.
-        args: Parsed CLI arguments providing device, fmax, max_steps, force.
+        args: Parsed configuration providing relaxation settings.
     """
     entries_out, infos_out = derive_output_paths(path)
 
     if entries_out.exists() and infos_out.exists() and not args.force:
-        print(f"{path.name}: outputs already exist, skipping (--force to overwrite)")
+        print(f"{path.name}: outputs already exist, skipping (set force: true)")
         return
 
     print(f"Loading {path}")
@@ -91,6 +99,7 @@ def process_file(path: Path, args: argparse.Namespace) -> None:
         device=args.device,
         fmax=args.fmax,
         max_steps=args.max_steps,
+        forward_batch_size=args.forward_batch_size,
     )
 
     for entry, relaxed in zip(entries, relaxed_structures):
@@ -114,37 +123,41 @@ def process_file(path: Path, args: argparse.Namespace) -> None:
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
-        "paths",
-        nargs="+",
+        "config",
         type=Path,
-        metavar="PATH",
-        help="One or more substituted_*.pkl.gz files to relax.",
+        metavar="CONFIG.yaml",
+        help="YAML configuration file.",
     )
-    p.add_argument(
-        "--device",
-        default="cuda",
-        help="PyTorch device string (default: cuda).",
+    cli_args = p.parse_args()
+    config = load_yaml_config(
+        cli_args.config,
+        allowed_keys={
+            "paths",
+            "device",
+            "fmax",
+            "max_steps",
+            "forward_batch_size",
+            "force",
+        },
+        required_keys={"paths"},
     )
-    p.add_argument(
-        "--fmax",
-        type=float,
-        default=1e-3,
-        metavar="FMAX",
-        help="Force convergence threshold in eV/Å (default: 1e-3).",
+    fmax = get_float(config, "fmax", default=1e-3)
+    max_steps = get_int(config, "max_steps", default=1000)
+    forward_batch_size = get_int(config, "forward_batch_size", default=64)
+    if fmax <= 0:
+        raise SystemExit("error: config key 'fmax' must be positive")
+    if max_steps <= 0:
+        raise SystemExit("error: config key 'max_steps' must be positive")
+    if forward_batch_size <= 0:
+        raise SystemExit("error: config key 'forward_batch_size' must be positive")
+    return argparse.Namespace(
+        paths=get_paths(config, "paths"),
+        device=get_string(config, "device", default="cuda"),
+        fmax=fmax,
+        max_steps=max_steps,
+        forward_batch_size=forward_batch_size,
+        force=get_bool(config, "force", default=False),
     )
-    p.add_argument(
-        "--max-steps",
-        type=int,
-        default=1000,
-        metavar="N",
-        help="Maximum L-BFGS steps per structure (default: 1000).",
-    )
-    p.add_argument(
-        "--force",
-        action="store_true",
-        help="Overwrite existing output files.",
-    )
-    return p.parse_args()
 
 
 def main() -> None:
