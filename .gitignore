@@ -13,6 +13,12 @@ wheels/
 input/
 results/
 notebooks/.cache/
+notebooks/*
+!notebooks/ai4am.ipynb
+!notebooks/journal.ipynb
+!notebooks/notebook_constants.py
+!notebooks/notebook_utils.py
+!notebooks/plot_style.py
 
 # secrets
 .env
