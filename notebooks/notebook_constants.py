@@ -3,8 +3,8 @@
 CATEGORY_ORDER = ["1", "2-1", "2-2", "2-3", "3"]
 CATEGORY_LABELS = {
     "1": "Duplicate",
-    "2-1": "Substituted (both)",
-    "2-2": "Substituted (SM-anon only)",
+    "2-1": "Substituted (Both)",
+    "2-2": "Substituted (Lattice & site only)",
     "2-3": "Substituted (Wyckoff only)",
     "3": "Unmatched",
 }
@@ -13,6 +13,15 @@ SIMPLE_CATEGORY_LABELS = {
     "1": "Duplicate",
     "2": "Substituted",
     "3": "Unmatched",
+}
+MODEL_DISPLAY_NAMES = {
+    "test": "MP20 Test",
+    "mattergen": "MatterGen",
+    "mattergen_80000": "MatterGen 80000",
+    "diffcsppp": "DiffCSP++",
+    "wyckofftransformer": "WyckoffTransformer",
+    "crystalite": "Crystalite",
+    "chemeleon2": "Chemeleon2",
 }
 CRYSTAL_SYSTEM_ORDER = [
     "triclinic",
