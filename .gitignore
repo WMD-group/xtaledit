@@ -29,6 +29,9 @@ notebooks/*
 # codex settings
 .codex/
 
+# resumable Hugging Face upload state
+.cache/huggingface/
+
 # out and err logs
 *.out
 *.err
