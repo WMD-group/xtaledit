@@ -1,8 +1,14 @@
-# Substitution-Based Analysis of Structural Novelty for Generative Models of Materials.
+# Substitution-Based Analysis of Structural Novelty for Generative Models of Materials
+
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Formatter: Ruff](https://img.shields.io/badge/formatter-Ruff-D7FF64.svg?logo=ruff)](https://docs.astral.sh/ruff/)
+[![Linter: Ruff](https://img.shields.io/badge/linter-Ruff-D7FF64.svg?logo=ruff)](https://docs.astral.sh/ruff/)
+[![Packaging: uv](https://img.shields.io/badge/packaging-uv-DE5FE9.svg?logo=uv)](https://docs.astral.sh/uv/)
+[![GitHub issues](https://img.shields.io/github/issues-raw/masahiro-negishi/xtaledit)](https://github.com/masahiro-negishi/xtaledit/issues)
 
 Code and analysis for the paper **"Substitution-Based Analysis of Structural Novelty for Generative Models of Materials."**
 
-`xtaledit` asks whether crystal generative models explore structures beyond a simple conventional search strategy: elemental substitution in a known structure.
+`xtaledit` evaluates whether crystals from generative models go beyond elemental substitution in known MP20 training structures.
 
 ## Novelty classification
 
@@ -10,8 +16,8 @@ Each generated crystal is assigned to one of three classes:
 
 | Class | Meaning |
 |---|---|
-| **Duplicate** | Directly matches an MP20 training structure with `pymatgen`'s `StructureMatcher`. |
-| **Substituted** | Does not directly match, but can be reproduced by substituting elements in a selected training structure and relaxing it. |
+| **Duplicate** | Matches an MP20 training structure with `pymatgen`'s `StructureMatcher`. |
+| **Substituted** | Is reproduced by substituting elements in a selected training structure and relaxing it. |
 | **Unmatched** | Is not reproduced by the substitution-based workflow. |
 
 ## Workflow
@@ -23,10 +29,10 @@ For each generated crystal, the pipeline:
 3. For non-Duplicates, selects structurally similar training crystals using two complementary criteria:
    - anonymous lattice-and-site matching with `StructureMatcher`;
    - matching space groups and Wyckoff-label multisets.
-4. Ranks candidates by the mean modified Pettifor-scale distance between elements at corresponding sites and retains the top `k=3` from each structural criterion.
+4. Ranks candidates by mean modified Pettifor-scale distance between mapped elements and retains the top `k=3` from each structural criterion.
 5. Substitutes the candidate elements, relaxes each candidate once with MACE-MPA-0, and compares the relaxed structures with the generated crystal.
 
-The seven scripts under `scripts/` implement preprocessing, direct matching, the two candidate-selection methods, substitution, relaxation, and the final match check.
+The seven pipeline scripts under `scripts/` (excluding `upload_hf_dataset.py`) implement preprocessing, direct matching, the two candidate-selection methods, substitution, relaxation, and the final match check.
 The ordered YAML files in `configs/crystalite/` provide a complete Crystalite example.
 
 ## Repository layout
@@ -63,7 +69,7 @@ source .venv/bin/activate
 uv sync --group dev
 ```
 
-The lock file selects CUDA 12.8 PyTorch wheels. The pipeline as configured is intended for CUDA-capable hardware because preprocessing and substituted structure relaxation use MACE-MPA-0. 
+The lock file selects CUDA 12.8 PyTorch wheels. The configured pipeline is intended for CUDA-capable hardware because preprocessing and substituted structure relaxation use MACE-MPA-0.
 The first MACE run may download model weights.
 
 Preprocessing also needs a Materials Project API key to construct the phase diagram cache:
@@ -100,7 +106,7 @@ Then open the journal notebook:
 jupyter notebook notebooks/journal.ipynb
 ```
 
-All figures used in the manuscript are produced by [`notebooks/journal.ipynb`](notebooks/journal.ipynb). 
+All figures used in the manuscript are produced by [`notebooks/journal.ipynb`](notebooks/journal.ipynb).
 Outputs are written to `results/analysis/journal/`.
 The notebook also recreates the main classification table and supporting analysis tables.
 
@@ -141,7 +147,7 @@ The Hugging Face release contains:
   `results/analysis/journal/`.
 
 ICSD records must not be redistributed under the standard ICSD license.
-Therefore, `input/icsd/` and record-level `results/raw/icsd/` artifacts are excluded from the public dataset. 
+Therefore, `input/icsd/` and record-level `results/raw/icsd/` artifacts are excluded from the public dataset.
 The final ICSD-dependent prototype-coverage figure can be shared as a derived manuscript artifact, but regenerating it requires licensed ICSD access and locally prepared Wyckoff representations.
 
 The Materials Project-derived phase-diagram cache should also be excluded unless its redistribution terms have been confirmed.
@@ -160,11 +166,13 @@ uvx hf auth login
 python scripts/upload_hf_dataset.py --upload
 ```
 
-The uploader includes `input/gen/`, `input/train/`, `results/raw/`, `results/analysis/ai4am/`, and `results/analysis/journal/`, while explicitly excluding other analysis directories, ICSD data, the Materials Project-derived phase-diagram cache, and `.gitkeep` files. 
+The uploader includes `input/gen/`, `input/train/`, `results/raw/`, `results/analysis/ai4am/`, and `results/analysis/journal/`, while explicitly excluding other analysis directories, ICSD data, the Materials Project-derived phase-diagram cache, and `.gitkeep` files.
 Uploads are resumable.
 To update only the dataset card, pass `--card-only --upload`.
 
-The dataset uses `license: other` because it combines generated structures, MP20-derived inputs, and derived artifacts.
+The MIT license badge applies to the code repository. 
+The Hugging Face dataset uses `license: other` because it combines generated structures, MP20-derived
+inputs, and derived artifacts.
 Upstream data retain their original terms and citation requirements; see [`DATASET_CARD.md`](DATASET_CARD.md).
 
 Generate a version-specific DOI for a stable release and add it to this README, the dataset card, and the paper's Data Availability statement.
