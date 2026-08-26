@@ -240,6 +240,7 @@ def test_entries_to_frame_options() -> None:
             rank=1,
             cost_uniform=0.1,
             cost_mod_petti=0.2,
+            cost_cs=0.3,
             structure="structure",
         )
     ]
@@ -251,6 +252,7 @@ def test_entries_to_frame_options() -> None:
             "rank": 1,
             "cost_uniform": 0.1,
             "cost_mod_petti": 0.2,
+            "cost_cs": 0.3,
             "match": True,
         }
     ]
@@ -265,6 +267,7 @@ def test_entries_to_frame_options() -> None:
     )
 
     assert frame.loc[0, "source_order"] == 0
+    assert frame.loc[0, "cost_cs"] == 0.3
     assert frame.loc[0, "relaxed_substituted_structure"] == "structure"
     assert frame.loc[0, "match_label"] == "relaxed match"
     assert not frame.loc[0, "relax_failed"]
@@ -300,5 +303,6 @@ def test_entries_to_frame_excludes_hard_relaxation_failures() -> None:
     frame = entries_to_frame([entry], [record], "anon", infos=[None])
 
     assert not frame.loc[0, "match"]
+    assert np.isnan(frame.loc[0, "cost_cs"])
     assert frame.loc[0, "relax_failed"]
     assert not frame.loc[0, "relax_converged"]

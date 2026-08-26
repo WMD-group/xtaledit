@@ -23,6 +23,7 @@ import gzip
 import math
 import pickle
 from collections import defaultdict
+from operator import attrgetter
 from pathlib import Path
 from typing import Any, Callable, Literal
 
@@ -115,7 +116,7 @@ def _substitute_wyckoff(
 def _top_k_entries(
     matches: list[AnonMatch] | list[WyckoffMatch],
     k: int,
-    cost_attr: Literal["cost_uniform", "cost_mod_petti"],
+    cost_attr: Literal["cost_uniform", "cost_mod_petti", "cost_cs"],
     gen: list[Structure],
     train: list[Structure],
     substitute_fn: Callable[..., Structure],
@@ -125,8 +126,8 @@ def _top_k_entries(
     Args:
         matches: Match objects from either anonymous or Wyckoff matching.
         k: Maximum number of training matches to keep per gen structure.
-        cost_attr: Name of the cost field used for ranking (``"cost_uniform"`` or
-            ``"cost_mod_petti"``).
+        cost_attr: Name of the cost field used for ranking (``"cost_uniform"``,
+            ``"cost_mod_petti"``, or ``"cost_cs"``).
         gen: List of generated structures.
         train: List of training structures.
         substitute_fn: Callable ``(match, gen, train) -> Structure`` that builds
@@ -136,11 +137,7 @@ def _top_k_entries(
         List of :class:`SubstitutedEntry` objects, at most ``k`` per gen structure,
         ordered by gen index then rank.
     """
-    cost: Callable[[AnonMatch | WyckoffMatch], float] = (
-        (lambda m: m.cost_uniform)
-        if cost_attr == "cost_uniform"
-        else (lambda m: m.cost_mod_petti)
-    )
+    cost: Callable[[AnonMatch | WyckoffMatch], float] = attrgetter(cost_attr)
     by_gen: dict[int, list[AnonMatch | WyckoffMatch]] = defaultdict(list)
     for m in matches:
         if not math.isnan(cost(m)):
@@ -158,6 +155,7 @@ def _top_k_entries(
                     cost_uniform=m.cost_uniform,
                     cost_mod_petti=m.cost_mod_petti,
                     structure=substitute_fn(m, gen, train),
+                    cost_cs=m.cost_cs,
                 )
             )
     return results
@@ -190,8 +188,10 @@ def parse_args() -> argparse.Namespace:
     if top_k <= 0:
         raise SystemExit("error: config key 'top_k' must be positive")
     cost = get_string(config, "cost", default="uniform")
-    if cost not in {"uniform", "mod_petti"}:
-        raise SystemExit("error: config key 'cost' must be 'uniform' or 'mod_petti'")
+    if cost not in {"uniform", "mod_petti", "cs"}:
+        raise SystemExit(
+            "error: config key 'cost' must be 'uniform', 'mod_petti', or 'cs'"
+        )
     return argparse.Namespace(
         model=get_string(config, "model"),
         top_k=top_k,
@@ -228,8 +228,12 @@ def main() -> None:
     args = parse_args()
     _validate_args(args)
 
-    cost_attr: Literal["cost_uniform", "cost_mod_petti"] = (
-        "cost_uniform" if args.cost == "uniform" else "cost_mod_petti"
+    cost_attr: Literal["cost_uniform", "cost_mod_petti", "cost_cs"] = (
+        "cost_uniform"
+        if args.cost == "uniform"
+        else "cost_mod_petti"
+        if args.cost == "mod_petti"
+        else "cost_cs"
     )
 
     gen_path = GEN_PRE_DIR / args.model / "relaxed_niggli.pkl.gz"

@@ -136,6 +136,15 @@ def test_match_wyckoff_nacl_kbr_mod_petti_cost() -> None:
     assert m.cost_uniform == 1.0  # both orbits substituted
 
 
+def test_match_wyckoff_nacl_kbr_cs_cost() -> None:
+    matches, _, _ = match_wyckoff(
+        [_nacl_conventional()], [_kbr_conventional()], cost="cs"
+    )
+
+    assert len(matches) == 1
+    assert np.isclose(matches[0].cost_cs, 0.322)
+
+
 def test_match_wyckoff_no_match_different_sg() -> None:
     nacl = _nacl_conventional()
     sc = _simple_cubic()

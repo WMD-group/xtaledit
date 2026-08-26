@@ -59,8 +59,10 @@ def parse_args() -> argparse.Namespace:
         allowed_keys={"model", "cost", "symprec"},
     )
     cost = get_string(config, "cost", default="uniform")
-    if cost not in {"uniform", "mod_petti"}:
-        raise SystemExit("error: config key 'cost' must be 'uniform' or 'mod_petti'")
+    if cost not in {"uniform", "mod_petti", "cs"}:
+        raise SystemExit(
+            "error: config key 'cost' must be 'uniform', 'mod_petti', or 'cs'"
+        )
     symprec = get_float(config, "symprec", default=0.1)
     if symprec <= 0:
         raise SystemExit("error: config key 'symprec' must be positive")

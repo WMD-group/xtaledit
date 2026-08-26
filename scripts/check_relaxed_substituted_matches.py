@@ -80,6 +80,7 @@ def _build_records(
             "rank": entry.rank,
             "cost_uniform": entry.cost_uniform,
             "cost_mod_petti": entry.cost_mod_petti,
+            "cost_cs": entry.cost_cs,
             "match": bool(match),
         }
         for i, (entry, match) in enumerate(zip(entries, matches, strict=True))

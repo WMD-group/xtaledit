@@ -76,8 +76,10 @@ def test_match_anonymous_costs_self_match() -> None:
     m = matches[0]
     assert not math.isnan(m.cost_uniform)
     assert not math.isnan(m.cost_mod_petti)
+    assert not math.isnan(m.cost_cs)
     assert m.cost_uniform == 0.0
     assert m.cost_mod_petti == 0.0
+    assert m.cost_cs == 0.0
 
 
 def test_match_anonymous_costs_substituted_supercell() -> None:
@@ -90,6 +92,7 @@ def test_match_anonymous_costs_substituted_supercell() -> None:
     m = matches[0]
     assert m.cost_uniform == 1.0  # every atom is substituted
     assert m.cost_mod_petti > 0.0
+    assert m.cost_cs == pytest.approx(0.322)
 
     # small in structs1, large in structs2 (s1_supercell=True)
     matches2 = match_anonymous([small], [large])
@@ -97,6 +100,7 @@ def test_match_anonymous_costs_substituted_supercell() -> None:
     m2 = matches2[0]
     assert m2.cost_uniform == 1.0
     assert m2.cost_mod_petti > 0.0
+    assert m2.cost_cs == pytest.approx(0.322)
 
 
 def test_match_anonymous_rejects_non_divisible_site_counts() -> None:

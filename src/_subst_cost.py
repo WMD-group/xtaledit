@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .chemical_scale import CHEMICAL_SCALE
 from .mod_petti import MOD_PETTI
 
 
@@ -20,3 +21,8 @@ def subst_cost_mod_petti(e1: str, e2: str) -> float:
     if p1 is None or p2 is None:
         return 102.0
     return float(abs(p1 - p2))
+
+
+def subst_cost_cs(e1: str, e2: str) -> float:
+    """Return the absolute difference of chemical-scale values for two elements."""
+    return abs(CHEMICAL_SCALE[e1] - CHEMICAL_SCALE[e2])

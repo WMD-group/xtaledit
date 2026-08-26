@@ -35,7 +35,7 @@ from pymatgen.core import Structure
 from pymatgen.core.structure_matcher import FrameworkComparator, StructureMatcher
 from tqdm import tqdm
 
-from ._subst_cost import subst_cost_mod_petti, subst_cost_uniform
+from ._subst_cost import subst_cost_cs, subst_cost_mod_petti, subst_cost_uniform
 
 
 @dataclass
@@ -81,10 +81,12 @@ class AnonMatch:
     rms: float
     cost_uniform: float = float("nan")
     cost_mod_petti: float = float("nan")
+    cost_cs: float = float("nan")
 
     def __setstate__(self, state: dict) -> None:
         state.setdefault("cost_uniform", float("nan"))
         state.setdefault("cost_mod_petti", float("nan"))
+        state.setdefault("cost_cs", float("nan"))
         self.__dict__.update(state)
 
 
@@ -130,7 +132,7 @@ def _compute_atom_costs(
     s1_supercell: bool,
     species1: list[str],
     species2: list[str],
-) -> tuple[float, float]:
+) -> tuple[float, float, float]:
     """Compute per-atom-averaged substitution costs from an anonymous match mapping.
 
     Args:
@@ -142,12 +144,13 @@ def _compute_atom_costs(
         species2: Element symbols for each atom of the original struct2.
 
     Returns:
-        Tuple ``(cost_uniform, cost_mod_petti)``, each averaged over ``N_large``
-        atom pairs.
+        Tuple ``(cost_uniform, cost_mod_petti, cost_cs)``, each averaged over
+        ``N_large`` atom pairs.
     """
     n = len(mapping)
     uniform = 0.0
     mod_petti = 0.0
+    cs = 0.0
     if s1_supercell:
         # mapping[i]=j: struct2 atom i ↔ struct1_supercell atom j → struct1 atom j // fu
         for i, j in enumerate(mapping):
@@ -155,6 +158,7 @@ def _compute_atom_costs(
             e2 = species2[i]
             uniform += subst_cost_uniform(e1, e2)
             mod_petti += subst_cost_mod_petti(e1, e2)
+            cs += subst_cost_cs(e1, e2)
     else:
         # mapping[i]=j: struct2_supercell atom i ↔ struct1 atom j; orig s2 = i // fu
         for i, j in enumerate(mapping):
@@ -162,7 +166,8 @@ def _compute_atom_costs(
             e2 = species2[i // fu]
             uniform += subst_cost_uniform(e1, e2)
             mod_petti += subst_cost_mod_petti(e1, e2)
-    return uniform / n, mod_petti / n
+            cs += subst_cost_cs(e1, e2)
+    return uniform / n, mod_petti / n, cs / n
 
 
 def _match_pair(
@@ -211,7 +216,9 @@ def _match_pair(
 
     rms, _dists, sc_m, translation, raw_mapping = match
     mapping = np.asarray(raw_mapping, dtype=np.int32)
-    cost_u, cost_mp = _compute_atom_costs(mapping, fu, s1_supercell, species1, species2)
+    cost_u, cost_mp, cost_cs = _compute_atom_costs(
+        mapping, fu, s1_supercell, species1, species2
+    )
     return AnonMatch(
         idx1=idx1,
         idx2=idx2,
@@ -223,6 +230,7 @@ def _match_pair(
         rms=float(rms),
         cost_uniform=cost_u,
         cost_mod_petti=cost_mp,
+        cost_cs=cost_cs,
     )
 
 

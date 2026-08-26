@@ -16,6 +16,7 @@ class SubstitutedEntry:
             structure (ranked by the cost used for selection).
         cost_uniform: Uniform substitution cost of the match (0 = identical chemistry).
         cost_mod_petti: Modified Pettifor substitution cost of the match.
+        cost_cs: Chemical-scale substitution cost of the match.
         structure: Training structure with element types replaced by those of the
             generated structure according to the atom mapping.
     """
@@ -26,3 +27,8 @@ class SubstitutedEntry:
     cost_uniform: float
     cost_mod_petti: float
     structure: Structure
+    cost_cs: float = float("nan")
+
+    def __setstate__(self, state: dict) -> None:
+        state.setdefault("cost_cs", float("nan"))
+        self.__dict__.update(state)

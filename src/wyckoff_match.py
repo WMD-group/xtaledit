@@ -22,7 +22,7 @@ from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
 from scipy.optimize import linear_sum_assignment
 from tqdm import tqdm
 
-from ._subst_cost import subst_cost_mod_petti, subst_cost_uniform
+from ._subst_cost import subst_cost_cs, subst_cost_mod_petti, subst_cost_uniform
 
 
 @dataclass
@@ -84,6 +84,8 @@ class WyckoffMatch:
         cost_mod_petti: Same weighting as ``cost_uniform`` but using the
             absolute difference of modified Pettifor numbers as the per-orbit
             cost.
+        cost_cs: Same weighting as ``cost_uniform`` but using the absolute
+            difference of chemical-scale values as the per-orbit cost.
         atom_map: Integer array of shape ``(N,)`` (``N`` = number of atoms,
             equal for both structures).  ``atom_map[j]`` is the index in
             ``structs1[idx1]`` of the atom that atom *j* in ``structs2[idx2]``
@@ -105,6 +107,11 @@ class WyckoffMatch:
     atom_map: np.ndarray
     repr1_idx: int
     repr2_idx: int
+    cost_cs: float = float("nan")
+
+    def __setstate__(self, state: dict) -> None:
+        state.setdefault("cost_cs", float("nan"))
+        self.__dict__.update(state)
 
 
 def precompute(struct: Structure, symprec: float = 0.1) -> WyckoffData:
@@ -279,7 +286,7 @@ def _match_orbits(
 def match_wyckoff(
     structs1: list[Structure] | list[WyckoffData],
     structs2: list[Structure] | list[WyckoffData],
-    cost: Literal["uniform", "mod_petti"] = "uniform",
+    cost: Literal["uniform", "mod_petti", "cs"] = "uniform",
     symprec: float = 0.1,
 ) -> tuple[list[WyckoffMatch], list[WyckoffData], list[WyckoffData]]:
     """Match every structure in *structs1* against compatible structures in *structs2*.
@@ -305,7 +312,8 @@ def match_wyckoff(
             List indices appear as ``idx2``.
         cost: Substitution cost policy.  ``"uniform"`` charges 1 per orbit
             where the elements differ; ``"mod_petti"`` charges the absolute
-            difference of modified Pettifor numbers.  The policy ranks
+            difference of modified Pettifor numbers; ``"cs"`` charges the
+            absolute difference of chemical-scale values.  The policy ranks
             normalizer-representation pairs but does not change the geometric
             assignment among repeated occurrences of one Wyckoff letter.
         symprec: Symmetry precision forwarded to
@@ -319,9 +327,11 @@ def match_wyckoff(
         *data1* / *data2* are the :class:`WyckoffData` lists used internally
         (pre-computed or freshly computed).
     """
-    cost_fn: Callable[[str, str], float] = (
-        subst_cost_uniform if cost == "uniform" else subst_cost_mod_petti
-    )
+    cost_fn: Callable[[str, str], float] = {
+        "uniform": subst_cost_uniform,
+        "mod_petti": subst_cost_mod_petti,
+        "cs": subst_cost_cs,
+    }[cost]
 
     data1_list: list[WyckoffData] = (
         list(structs1)  # type: ignore[arg-type]
@@ -419,6 +429,13 @@ def match_wyckoff(
                         elems2,
                         orbit_sizes1,
                         subst_cost_mod_petti,
+                    ),
+                    cost_cs=_orbit_cost(
+                        orbit_map,
+                        data1.orbit_elements,
+                        elems2,
+                        orbit_sizes1,
+                        subst_cost_cs,
                     ),
                     atom_map=atom_map,
                     repr1_idx=repr1_idx,
