@@ -368,8 +368,10 @@ def entries_to_frame(
         for attr in ("gen_idx", "train_idx", "rank"):
             if int(getattr(entry, attr)) != int(record[attr]):
                 raise ValueError(f"{source}: {attr} mismatch at entry {entry_idx}")
-        for attr in ("cost_uniform", "cost_mod_petti"):
-            if not np.isclose(float(getattr(entry, attr)), float(record[attr])):
+        for attr in ("cost_uniform", "cost_mod_petti", "cost_cs"):
+            entry_cost = float(getattr(entry, attr, float("nan")))
+            record_cost = float(record.get(attr, float("nan")))
+            if not np.isclose(entry_cost, record_cost, equal_nan=True):
                 raise ValueError(f"{source}: {attr} mismatch at entry {entry_idx}")
 
         info = infos[entry_idx] if infos is not None else None
@@ -385,6 +387,7 @@ def entries_to_frame(
             "rank": int(entry.rank),
             "cost_uniform": float(entry.cost_uniform),
             "cost_mod_petti": float(entry.cost_mod_petti),
+            "cost_cs": float(getattr(entry, "cost_cs", float("nan"))),
             "match": bool(record["match"]) and not relax_failed,
         }
         if infos is not None:
