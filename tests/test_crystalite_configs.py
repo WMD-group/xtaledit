@@ -106,6 +106,7 @@ def test_crystalite_relaxed_match_config(monkeypatch) -> None:
         ROOT / "input/gen/preprocessed/crystalite/relaxed_niggli.pkl.gz"
     )
     assert args.matcher_kwargs["ltol"] == 0.2
+    assert args.matcher_kwargs["attempt_supercell"] is True
     assert args.fit_kwargs["skip_structure_reduction"] is False
     assert args.output is None
     assert args.force is False

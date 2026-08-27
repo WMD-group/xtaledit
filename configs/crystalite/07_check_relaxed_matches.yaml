@@ -8,7 +8,7 @@ structure_matcher:
   angle_tol: 5.0
   primitive_cell: true
   scale: false
-  attempt_supercell: false
+  attempt_supercell: true
   allow_subset: false
   supercell_size: num_sites
   ignored_species: []
