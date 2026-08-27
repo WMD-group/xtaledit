@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 from pymatgen.core import Lattice, Structure
+from pymatgen.core.structure_matcher import StructureMatcher
 
 from src.mod_petti import MOD_PETTI
 from src.wyckoff_match import WyckoffData, WyckoffMatch, match_wyckoff, precompute
@@ -10,10 +12,11 @@ from src.wyckoff_match import WyckoffData, WyckoffMatch, match_wyckoff, precompu
 def _wyckoff_data(
     elements: list[str],
     coords: list[list[float]],
+    spg_num: int = 1,
 ) -> WyckoffData:
-    """Build minimal P1 data with one single-atom orbit per element."""
+    """Build minimal data with one single-atom orbit per element."""
     return WyckoffData(
-        spg_num=1,
+        spg_num=spg_num,
         relabeled_letters=[["a"] * len(elements)],
         letter_key=[tuple("a" for _ in elements)],
         repr_idx_for_relabeling=[0],
@@ -150,6 +153,91 @@ def test_match_wyckoff_no_match_different_sg() -> None:
     sc = _simple_cubic()
     matches, _, _ = match_wyckoff([nacl], [sc])
     assert matches == []
+
+
+@pytest.mark.parametrize(
+    ("left", "right"),
+    [
+        (76, 78),
+        (91, 95),
+        (92, 96),
+        (144, 145),
+        (151, 153),
+        (152, 154),
+        (169, 170),
+        (171, 172),
+        (178, 179),
+        (180, 181),
+        (212, 213),
+    ],
+)
+def test_match_wyckoff_enantiomorphic_space_groups(left: int, right: int) -> None:
+    for spg1, spg2 in ((left, right), (right, left)):
+        data1 = _wyckoff_data(["Na"], [[0.1, 0.2, 0.3]], spg_num=spg1)
+        data2 = _wyckoff_data(["Na"], [[0.9, 0.8, 0.7]], spg_num=spg2)
+
+        matches, _, _ = match_wyckoff([data1], [data2])
+
+        assert len(matches) == 1
+        assert matches[0].cost_uniform == 0.0
+        assert np.array_equal(matches[0].atom_map, np.array([0]))
+
+
+def test_match_wyckoff_does_not_match_non_enantiomorphic_space_groups() -> None:
+    data1 = _wyckoff_data(["Na"], [[0.1, 0.2, 0.3]], spg_num=76)
+    data2 = _wyckoff_data(["Na"], [[0.9, 0.8, 0.7]], spg_num=77)
+
+    matches, _, _ = match_wyckoff([data1], [data2])
+
+    assert matches == []
+
+
+def test_enantiomorphic_match_uses_inverted_coords_but_keeps_original_t() -> None:
+    point = np.array([0.12, 0.23, 0.31])
+    generated = Structure.from_spacegroup(
+        76,
+        Lattice.tetragonal(5.0, 7.0),
+        ["Na", "Cl"],
+        [point, -point],
+    )
+    training = Structure(
+        generated.lattice,
+        generated.species,
+        -generated.frac_coords,
+    )
+
+    matches, generated_data, training_data = match_wyckoff(
+        [generated], [training], symprec=0.001
+    )
+
+    assert generated_data[0].spg_num == 76
+    assert training_data[0].spg_num == 78
+    assert len(matches) == 1
+    assert matches[0].cost_uniform == 0.0
+    assert np.array_equal(matches[0].atom_map, np.arange(len(training)))
+
+    substituted = training.copy()
+    for j2, j1 in enumerate(matches[0].atom_map):
+        substituted.replace(j2, generated[int(j1)].specie.symbol)
+    assert np.array_equal(substituted.frac_coords, training.frac_coords)
+
+    matcher = StructureMatcher(
+        ltol=0.2,
+        stol=0.3,
+        angle_tol=5.0,
+        primitive_cell=True,
+        scale=False,
+        attempt_supercell=False,
+        allow_subset=False,
+        supercell_size="num_sites",
+        ignored_species=[],
+    )
+    assert matcher.fit(
+        substituted,
+        generated,
+        symmetric=False,
+        skip_structure_reduction=False,
+    )
 
 
 def test_match_wyckoff_self_match_zero_cost() -> None:
