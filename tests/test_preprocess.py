@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -63,6 +64,57 @@ def test_gen_sources_rejects_non_pkl_gz(tmp_path: Path) -> None:
 def test_gen_sources_rejects_missing_file(tmp_path: Path) -> None:
     with pytest.raises(SystemExit, match="generated file not found"):
         preprocess._gen_sources(tmp_path / "missing.pkl.gz")
+
+
+def test_gen_out_dir_requires_gen_file(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit, match="gen_out_dir requires gen_file"):
+        preprocess.preprocess_gen(gen_out_dir=tmp_path)
+
+
+def test_preprocess_gen_uses_configured_output_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    src = tmp_path / "raw" / "model.pkl.gz"
+    src.parent.mkdir()
+    preprocess._save([], src)
+
+    default_out_dir = tmp_path / "default"
+    configured_out_dir = tmp_path / "configured"
+    monkeypatch.setattr(preprocess, "GEN_OUT_DIR", default_out_dir)
+    monkeypatch.setattr(preprocess, "relax_structures", lambda structures: ([], []))
+    monkeypatch.setattr(preprocess, "_get_ppd", object)
+    monkeypatch.setattr(
+        preprocess,
+        "compute_ehulls",
+        lambda structures, energies, ppd: [],
+    )
+
+    preprocess.preprocess_gen(src, configured_out_dir)
+
+    assert not default_out_dir.exists()
+    assert {path.name for path in configured_out_dir.iterdir()} == {
+        "ehull_relaxed.pkl.gz",
+        "ehull_unrelaxed.pkl.gz",
+        "relax_infos.pkl.gz",
+        "relaxed.pkl.gz",
+        "relaxed_niggli.pkl.gz",
+        "smact_validity.npz",
+    }
+
+
+def test_real_test_config_uses_nested_output_dir(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = PREPROCESS_PATH.parent.parent
+    config_path = root / "configs" / "test" / "01_preprocess_real.yaml"
+    monkeypatch.setattr(sys, "argv", [str(PREPROCESS_PATH), str(config_path)])
+
+    args = preprocess.parse_args()
+
+    assert args.gen_file == root / "input" / "gen" / "raw" / "test.pkl.gz"
+    assert args.gen_out_dir == (
+        root / "input" / "gen" / "preprocessed" / "test" / "real"
+    )
 
 
 def test_regenerated_relaxation_overwrites_dependent_outputs(

@@ -22,6 +22,9 @@ Outputs:
     input/gen/preprocessed/<model>/smact_validity.npz       -> bool array "valid"
     input/train/preprocessed/train.pkl.gz                   -> list[Structure] (pickle)
 
+Set ``gen_out_dir`` in the configuration to override the generated-structure
+output directory.
+
 Already-existing output files are skipped.
 """
 
@@ -101,13 +104,17 @@ def _gen_sources(gen_file: Path | None = None) -> list[Path]:
     return [gen_file]
 
 
-def preprocess_gen(gen_file: Path | None = None) -> None:
-    GEN_OUT_DIR.mkdir(parents=True, exist_ok=True)
+def preprocess_gen(
+    gen_file: Path | None = None, gen_out_dir: Path | None = None
+) -> None:
+    if gen_out_dir is not None and gen_file is None:
+        raise SystemExit("error: gen_out_dir requires gen_file")
+
     ppd: PatchedPhaseDiagram | None = None
 
     for src in _gen_sources(gen_file):
         stem = _stem(src)
-        out_dir = GEN_OUT_DIR / stem
+        out_dir = gen_out_dir if gen_out_dir is not None else GEN_OUT_DIR / stem
         out_dir.mkdir(parents=True, exist_ok=True)
 
         dst_relaxed = out_dir / "relaxed.pkl.gz"
@@ -222,13 +229,16 @@ def parse_args() -> argparse.Namespace:
         help="YAML configuration file.",
     )
     cli_args = p.parse_args()
-    config = load_yaml_config(cli_args.config, allowed_keys={"gen_file"})
-    return argparse.Namespace(gen_file=get_path(config, "gen_file", default=None))
+    config = load_yaml_config(cli_args.config, allowed_keys={"gen_file", "gen_out_dir"})
+    return argparse.Namespace(
+        gen_file=get_path(config, "gen_file", default=None),
+        gen_out_dir=get_path(config, "gen_out_dir", default=None),
+    )
 
 
 def main() -> None:
     args = parse_args()
-    preprocess_gen(args.gen_file)
+    preprocess_gen(args.gen_file, args.gen_out_dir)
     preprocess_train()
 
 
